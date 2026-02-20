@@ -1,0 +1,33 @@
+[project]
+name = "ocr-bench"
+version = "0.1.0"
+description = "OCR model evaluation toolkit — VLM-as-judge with per-dataset leaderboards"
+readme = "README.md"
+authors = [
+    { name = "Daniel van Strien", email = "davanstrien@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=4.0.0",
+    "huggingface-hub",
+    "pillow",
+    "rich",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+vllm = ["vllm>=0.9.1", "torch"]
+api = ["openai"]
+
+[project.scripts]
+ocr-bench = "ocr_bench.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.27,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
