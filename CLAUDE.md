@@ -89,11 +89,12 @@ Decentralized eval results on Hub: benchmark datasets define `eval.yaml`, model 
 
 ### Phase 1: Foundation
 - [x] Investigate Inspect AI — **NO-GO** (2026-02-20). Build standalone.
-- [ ] Init uv project with `src/ocr_bench/` layout
-- [ ] Port `ocr-vllm-judge.py` → `src/ocr_bench/judge.py` (core pairwise judge, structured output, ELO)
-- [ ] Port `ocr-jury-bench.py` → `src/ocr_bench/jury.py` (API-based judge, jury mode)
-- [ ] Port ELO computation + results aggregation as shared module
-- [ ] CLI entrypoint: `ocr-bench judge` / `ocr-bench jury`
+- [x] Init uv project with `src/ocr_bench/` layout (2026-02-20)
+- [ ] Port shared foundations: `elo.py` (Bradley-Terry, K=32), `judge.py` (prompt template, Comparison, structured output schema, image utils)
+- [ ] Port dataset loading: `dataset.py` (flat, config-per-model, PR-based, OCR column discovery)
+- [ ] Port judge backends: `backends.py` (vLLM offline + API via HF Inference Providers / OpenAI-compatible)
+- [ ] Port Hub publishing: `publish.py` (comparisons, leaderboard, metadata configs)
+- [ ] CLI entrypoint: `ocr-bench judge` (offline vLLM) / `ocr-bench jury` (API-based)
 - [ ] Write README — key finding ("no single best model") as the headline
 - [ ] Adapt `OCR-BENCHMARK.md` methodology section for README
 
