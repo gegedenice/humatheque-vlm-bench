@@ -135,19 +135,28 @@ def build_messages(image_b64: str, prompt: str) -> list[dict[str, Any]]:
     ]
 
 
+def _normalize_pair(a: str, b: str) -> tuple[str, str]:
+    """Return a canonical (sorted) pair for symmetric lookup."""
+    return (a, b) if a <= b else (b, a)
+
+
 def build_comparisons(
     dataset: Any,
     ocr_columns: dict[str, str],
     max_samples: int | None = None,
     seed: int = 42,
+    skip_pairs: set[tuple[str, str]] | None = None,
 ) -> list[Comparison]:
-    """Build all pairwise comparison prompts from a dataset.
+    """Build pairwise comparison prompts from a dataset.
 
     Args:
         dataset: HF dataset with an "image" column and OCR output columns.
         ocr_columns: Mapping of column_name -> model_name.
         max_samples: If set, randomly sample this many rows.
         seed: Random seed for sampling and position-bias randomization.
+        skip_pairs: Set of (model_a, model_b) pairs to exclude. Pairs are
+            normalized so (a, b) and (b, a) are treated identically.
+            If None, all pairs are included.
 
     Returns:
         List of Comparison objects with pre-built chat messages.
@@ -155,6 +164,11 @@ def build_comparisons(
     col_names = list(ocr_columns.keys())
     model_names = list(ocr_columns.values())
     pairs = list(combinations(range(len(col_names)), 2))
+
+    # Normalize skip set for symmetric lookup
+    normalized_skip: set[tuple[str, str]] = set()
+    if skip_pairs:
+        normalized_skip = {_normalize_pair(a, b) for a, b in skip_pairs}
 
     indices = list(range(len(dataset)))
     if max_samples and max_samples < len(indices):
@@ -166,9 +180,19 @@ def build_comparisons(
 
     for idx in indices:
         row = dataset[idx]
+
+        # Determine which pairs need judging for this row
+        needed_pairs = [
+            (i, j)
+            for i, j in pairs
+            if _normalize_pair(model_names[i], model_names[j]) not in normalized_skip
+        ]
+        if not needed_pairs:
+            continue  # Skip image encoding entirely
+
         image_b64 = image_to_base64(row["image"])
 
-        for i, j in pairs:
+        for i, j in needed_pairs:
             col_a, col_b = col_names[i], col_names[j]
             text_a = row[col_a] or ""
             text_b = row[col_b] or ""

@@ -16,11 +16,18 @@ logger = structlog.get_logger()
 def load_results(repo_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Load leaderboard and comparisons from a Hub results dataset.
 
+    Tries the default config first (new repos), then falls back to the
+    named ``leaderboard`` config (old repos).
+
     Returns:
         (leaderboard_rows, comparison_rows)
     """
-    leaderboard_ds = load_dataset(repo_id, name="leaderboard", split="train")
-    leaderboard_rows = [dict(row) for row in leaderboard_ds]
+    try:
+        leaderboard_ds = load_dataset(repo_id, split="train")
+        leaderboard_rows = [dict(row) for row in leaderboard_ds]
+    except Exception:
+        leaderboard_ds = load_dataset(repo_id, name="leaderboard", split="train")
+        leaderboard_rows = [dict(row) for row in leaderboard_ds]
 
     comparisons_ds = load_dataset(repo_id, name="comparisons", split="train")
     comparison_rows = [dict(row) for row in comparisons_ds]

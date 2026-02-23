@@ -199,3 +199,70 @@ class TestBuildComparisons:
         ]
         comps = build_comparisons(ds, {"col_a": "A", "col_b": "B"}, max_samples=3)
         assert len(comps) == 3
+
+    def test_skip_pairs_excludes_pair(self):
+        """skip_pairs should exclude the specified model pair."""
+        ds = [
+            {
+                "image": Image.new("RGB", (50, 50)),
+                "col_a": "text a",
+                "col_b": "text b",
+                "col_c": "text c",
+            },
+        ]
+        ocr_columns = {"col_a": "ModelA", "col_b": "ModelB", "col_c": "ModelC"}
+        # 3 models = 3 pairs. Skip one.
+        comps = build_comparisons(
+            ds, ocr_columns, skip_pairs={("ModelA", "ModelB")}
+        )
+        pair_set = {(c.model_a, c.model_b) for c in comps}
+        assert ("ModelA", "ModelB") not in pair_set
+        assert len(comps) == 2  # ModelA-ModelC, ModelB-ModelC
+
+    def test_skip_pairs_symmetric(self):
+        """Skipping (A, B) should also skip (B, A)."""
+        ds = [
+            {
+                "image": Image.new("RGB", (50, 50)),
+                "col_a": "text a",
+                "col_b": "text b",
+            },
+        ]
+        ocr_columns = {"col_a": "ModelA", "col_b": "ModelB"}
+        # Skip in reverse order
+        comps = build_comparisons(
+            ds, ocr_columns, skip_pairs={("ModelB", "ModelA")}
+        )
+        assert len(comps) == 0
+
+    def test_skip_pairs_none_includes_all(self):
+        """Default skip_pairs=None should include all pairs."""
+        ds = [
+            {
+                "image": Image.new("RGB", (50, 50)),
+                "col_a": "text a",
+                "col_b": "text b",
+                "col_c": "text c",
+            },
+        ]
+        ocr_columns = {"col_a": "A", "col_b": "B", "col_c": "C"}
+        comps = build_comparisons(ds, ocr_columns, skip_pairs=None)
+        assert len(comps) == 3  # All C(3,2) pairs
+
+    def test_skip_all_pairs_skips_image_encoding(self):
+        """When all pairs for a row are skipped, image_to_base64 is not called."""
+        ds = [
+            {
+                "image": Image.new("RGB", (50, 50)),
+                "col_a": "text a",
+                "col_b": "text b",
+            },
+        ]
+        ocr_columns = {"col_a": "ModelA", "col_b": "ModelB"}
+        from unittest.mock import patch
+
+        with patch("ocr_bench.judge.image_to_base64") as mock_img:
+            build_comparisons(
+                ds, ocr_columns, skip_pairs={("ModelA", "ModelB")}
+            )
+            mock_img.assert_not_called()

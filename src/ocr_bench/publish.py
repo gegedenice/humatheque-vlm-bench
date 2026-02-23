@@ -7,9 +7,9 @@ import json
 from dataclasses import dataclass
 
 import structlog
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 
-from ocr_bench.elo import Leaderboard
+from ocr_bench.elo import ComparisonResult, Leaderboard
 
 logger = structlog.get_logger()
 
@@ -30,6 +30,52 @@ class EvalMetadata:
     def __post_init__(self):
         if not self.timestamp:
             self.timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+
+
+def load_existing_comparisons(repo_id: str) -> list[ComparisonResult]:
+    """Load existing comparisons from a Hub results repo.
+
+    The stored winner is already unswapped (canonical), so ``swapped=False``.
+    Returns an empty list if the repo or config doesn't exist.
+    """
+    try:
+        ds = load_dataset(repo_id, name="comparisons", split="train")
+    except Exception as exc:
+        logger.info("no_existing_comparisons", repo=repo_id, reason=str(exc))
+        return []
+
+    results = []
+    for row in ds:
+        results.append(
+            ComparisonResult(
+                sample_idx=row["sample_idx"],
+                model_a=row["model_a"],
+                model_b=row["model_b"],
+                winner=row["winner"],
+                reason=row.get("reason", ""),
+                agreement=row.get("agreement", "1/1"),
+                swapped=False,
+                text_a=row.get("text_a", ""),
+                text_b=row.get("text_b", ""),
+                col_a=row.get("col_a", ""),
+                col_b=row.get("col_b", ""),
+            )
+        )
+    logger.info("loaded_existing_comparisons", repo=repo_id, n=len(results))
+    return results
+
+
+def load_existing_metadata(repo_id: str) -> list[dict]:
+    """Load existing metadata rows from a Hub results repo.
+
+    Returns an empty list if the repo or config doesn't exist.
+    """
+    try:
+        ds = load_dataset(repo_id, name="metadata", split="train")
+        return [dict(row) for row in ds]
+    except Exception as exc:
+        logger.info("no_existing_metadata", repo=repo_id, reason=str(exc))
+        return []
 
 
 def build_leaderboard_rows(board: Leaderboard) -> list[dict]:
@@ -71,13 +117,18 @@ def publish_results(
     repo_id: str,
     board: Leaderboard,
     metadata: EvalMetadata,
+    existing_metadata: list[dict] | None = None,
 ) -> None:
-    """Push evaluation results to Hub as a dataset with three configs.
+    """Push evaluation results to Hub as a dataset with multiple configs.
 
     Configs:
-      - ``comparisons``: Raw comparison log from the leaderboard.
-      - ``leaderboard``: Ranked model table with ELO, wins, losses, ties.
-      - ``metadata``: Single-row dataset with eval run metadata.
+      - (default): Leaderboard table — ``load_dataset("repo")`` returns this.
+      - ``leaderboard``: Same table, named config (backward compat for viewer).
+      - ``comparisons``: Full comparison log from the board (caller merges
+        existing + new before ``compute_elo``, so ``board.comparison_log``
+        is already the complete set).
+      - ``metadata``: Append-only run log. New row is appended to
+        ``existing_metadata``.
     """
     # Comparisons
     if board.comparison_log:
@@ -85,12 +136,15 @@ def publish_results(
         comp_ds.push_to_hub(repo_id, config_name="comparisons")
         logger.info("published_comparisons", repo=repo_id, n=len(board.comparison_log))
 
-    # Leaderboard
+    # Leaderboard — dual push: default config + named config
     rows = build_leaderboard_rows(board)
-    Dataset.from_list(rows).push_to_hub(repo_id, config_name="leaderboard")
+    lb_ds = Dataset.from_list(rows)
+    lb_ds.push_to_hub(repo_id)
+    lb_ds.push_to_hub(repo_id, config_name="leaderboard")
     logger.info("published_leaderboard", repo=repo_id, n=len(rows))
 
-    # Metadata
+    # Metadata — append-only
     meta_row = build_metadata_row(metadata)
-    Dataset.from_list([meta_row]).push_to_hub(repo_id, config_name="metadata")
-    logger.info("published_metadata", repo=repo_id)
+    all_meta = (existing_metadata or []) + [meta_row]
+    Dataset.from_list(all_meta).push_to_hub(repo_id, config_name="metadata")
+    logger.info("published_metadata", repo=repo_id, n=len(all_meta))

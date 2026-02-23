@@ -12,7 +12,7 @@ Rankings change by document type — manuscript cards, printed books, historical
 
 ## Current State (2026-02-23)
 
-**194 tests passing**, ruff clean. Full pipeline works:
+**177 tests passing**, ruff clean. Full pipeline works:
 
 ```
 ocr-bench run <input-ds> <output-repo> --max-samples 50
@@ -28,12 +28,12 @@ ocr-bench view <results-repo>
 | `judge.py` | VLM-as-judge prompt, Comparison dataclass, structured output schema |
 | `dataset.py` | Flat, config-per-model, PR-based dataset loading, OCR column discovery |
 | `backends.py` | API backends: InferenceProvider + OpenAI-compatible |
-| `publish.py` | Publish comparisons + leaderboard to Hub |
+| `publish.py` | Publish comparisons + leaderboard to Hub; incremental load from existing results |
 | `run.py` | Orchestrator: launch N OCR models via HF Jobs |
 | `validate.py` | Human A/B validation data layer, agreement stats, human ELO |
 | `viewer.py` | Data loading for results viewer (pure functions) |
 | `web.py` | FastAPI + HTMX unified viewer (browse + validate in one app) |
-| `cli.py` | CLI: `judge`, `run`, `view` |
+| `cli.py` | CLI: `judge` (incremental + `--full-rejudge`), `run`, `view` |
 
 ### Viewer (`ocr-bench view`)
 
@@ -46,12 +46,15 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 
 ## Next Steps
 
-### Immediate — Incremental judging + publication workflow
-- [ ] Incremental judge mode: load existing comparisons from results repo, diff which model pairs are missing, judge only new pairs, merge and refit BT-MLE. Key for "new model released → update leaderboard" without re-judging everything.
-- [ ] Results repo structure: default config = leaderboard (overwritten each run), `comparisons` = append-only log across runs, `metadata` = list of all eval runs (append). One results repo per source dataset.
+### Immediate — Publication + polish
+- [x] Incremental judge mode: `--save-results` to existing repo loads comparisons, skips judged pairs, judges only new ones, merges and refits BT-MLE. `--full-rejudge` to override.
+- [x] Results repo structure: default config = leaderboard, `comparisons` = append-only, `metadata` = append-only run log.
 - [ ] Re-run BPL judge with `--save-results` using new publication workflow
 - [ ] Write README — "no single best model" as headline
 - [ ] Choose a project name (captures "rankings depend on your documents")
+
+### Known limitation — row alignment across PRs
+`load_config_dataset()` merges configs by positional index — no alignment key. Safe if all model runs use the same `--seed`/`--max-samples` and the source dataset doesn't change. Future: add content hash column for validation.
 
 ### Phase 4: Blog + Visibility
 - [ ] "There Is No Best OCR Model" blog post

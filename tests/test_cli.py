@@ -81,3 +81,13 @@ class TestBuildParser:
             parser.parse_args(["judge", "--help"])
         assert exc_info.value.code == 0
 
+    def test_full_rejudge_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["judge", "user/dataset", "--full-rejudge"])
+        assert args.full_rejudge is True
+
+    def test_full_rejudge_defaults_false(self):
+        parser = build_parser()
+        args = parser.parse_args(["judge", "user/dataset"])
+        assert args.full_rejudge is False
+
