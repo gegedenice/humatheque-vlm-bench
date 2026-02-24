@@ -34,7 +34,7 @@ class JudgeBackend(abc.ABC):
         """
 
 
-DEFAULT_MAX_TOKENS = 512
+DEFAULT_MAX_TOKENS = 1024
 
 
 class InferenceProviderJudge(JudgeBackend):

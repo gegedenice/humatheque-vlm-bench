@@ -292,6 +292,30 @@ def cmd_judge(args: argparse.Namespace) -> None:
                 board = compute_elo(
                     existing_results + new_results, model_names
                 )
+                # Show CI gaps for each adjacent pair
+                ranked = board.ranked
+                if board.elo_ci:
+                    gaps: list[str] = []
+                    for i in range(len(ranked) - 1):
+                        hi_model, _ = ranked[i]
+                        lo_model, _ = ranked[i + 1]
+                        hi_ci = board.elo_ci.get(hi_model)
+                        lo_ci = board.elo_ci.get(lo_model)
+                        if hi_ci and lo_ci:
+                            gap = hi_ci[0] - lo_ci[1]  # positive = resolved
+                            if gap > 0:
+                                status = "[green]ok[/green]"
+                            else:
+                                status = f"[yellow]overlap {-gap:.0f}[/yellow]"
+                            gaps.append(
+                                f"    {hi_model} vs {lo_model}: "
+                                f"gap={gap:+.0f} {status}"
+                            )
+                    if gaps:
+                        console.print("  CI gaps:")
+                        for g in gaps:
+                            console.print(g)
+
                 if rankings_resolved(board):
                     remaining = len(all_indices) - batch_start - len(batch_indices)
                     console.print(
