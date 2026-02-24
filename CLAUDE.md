@@ -49,7 +49,7 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 ### Immediate — Publication + polish
 - [x] Incremental judge mode: `--save-results` to existing repo loads comparisons, skips judged pairs, judges only new ones, merges and refits BT-MLE. `--full-rejudge` to override.
 - [x] Results repo structure: default config = leaderboard, `comparisons` = append-only, `metadata` = append-only run log.
-- [ ] Re-run BPL judge with `--save-results` using new publication workflow
+- [x] Re-run BPL judge with `--save-results` using new publication workflow
 - [ ] Write README — "no single best model" as headline
 - [ ] Choose a project name (captures "rankings depend on your documents")
 
@@ -83,9 +83,11 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 ## Technical Reference
 
 ### Judge Models
-- **Kimi K2.5 (`novita:moonshotai/Kimi-K2.5`)** — best human agreement, default
+- **Kimi K2.5 (`novita:moonshotai/Kimi-K2.5`)** — best human agreement, default. ~2-5% parse failures from degeneration even at 1024 max_tokens.
+- **Qwen3-VL-235B (`novita:Qwen/Qwen3-VL-235B-A22B-Instruct`)** — zero parse failures, agrees with Kimi on cluster rankings but swaps within close groups. Good alternative judge.
 - **Qwen3-VL-30B-A3B (offline vLLM)** — best offline judge
 - **7B/8B** — biased toward verbose output, not recommended as primary
+- **Jury of smaller/cheaper VLMs** — unexplored. Could use e.g. Gemma-3-27B, Llama-4-Maverick, Qwen3-VL-8B via groq/sambanova for fast cheap jury. Worth testing if speed matters more than accuracy.
 
 ### Core Benchmark Models
 | Model | Size | Best on |
@@ -97,13 +99,15 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 
 ### Key Findings
 1. **No single best OCR model** — rankings shuffle by document type
-2. **DeepSeek-OCR most consistent** — #1 or #2 across all datasets
-3. **Document type > model size** — 0.9B beats 4B on some collections
-4. **Judge model size matters** — 170B closest to human rankings
-5. **Jury mode works** — eliminates single-judge bias
+2. **DeepSeek-OCR most consistent** — #1 on UFO (diverse docs), but #3-4 on BPL card catalogs
+3. **LightOnOCR-2 best on BPL** — #1 (Kimi) or #2 (Qwen3-VL) on card catalogs
+4. **Document type > model size** — 0.9B beats 4B on some collections
+5. **Judge model size matters** — 170B closest to human rankings
+6. **Judges agree on clusters, swap within** — Kimi K2.5 and Qwen3-VL-235B produce same top-2/bottom-2 groupings on BPL but swap adjacent models. CIs overlap between judges, confirming fine ordering is noise.
+7. **Jury mode works** — eliminates single-judge bias
 
 ### Results on Hub
-- `davanstrien/bpl-ocr-bench-results` — BPL card catalog, 4 models (needs re-run)
+- `davanstrien/bpl-ocr-bench-results` — BPL card catalog, 4 models, Kimi K2.5 judge (2026-02-24)
 - `davanstrien/ocr-bench-rubenstein-judge` — 50 samples, 300 comparisons
 - `davanstrien/ocr-bench-ufo-judge-30b` — cross-validation on UFO-ColPali
 - `davanstrien/ocr-bench-rubenstein-judge-kimi-k25` — Kimi K2.5 170B
