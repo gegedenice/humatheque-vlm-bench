@@ -2,7 +2,14 @@
 {% block title %}Leaderboard — OCR Bench{% endblock %}
 {% block content %}
 <h2 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">Leaderboard</h2>
-<p style="font-size: 0.8rem; color: #888; margin-top: 0;">{{ repo_id }}</p>
+<p style="font-size: 0.8rem; color: #888; margin-top: 0;"><a href="https://huggingface.co/datasets/{{ repo_id }}" style="color: #888; text-decoration: underline;" target="_blank">{{ repo_id }}</a></p>
+
+<p style="font-size: 0.82rem; color: #999; line-height: 1.5; max-width: 48rem; margin: 0.75rem 0 1rem;">
+  Rankings are computed using <strong style="color: #bbb;">Bradley-Terry MLE</strong> from pairwise comparisons judged by a vision-language model.
+  The judge sees the original document image alongside two anonymised OCR outputs and picks the more faithful transcription.
+  Browse the <a href="/comparisons" style="color: #aaa;">comparisons</a> to see the evidence — and vote yourself to build a Human ELO column.
+  Human votes are stored locally for this session only and will reset when the server restarts.
+</p>
 
 <table>
   <thead>

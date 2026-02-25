@@ -282,13 +282,24 @@ def compute_elo(
             board.ties[r.model_a] += 1
             board.ties[r.model_b] += 1
 
+        # Canonicalise the reason text so A/B references match model_a/model_b
+        reason = r.reason
+        if r.swapped and reason:
+            # Swap "Output A"↔"Output B" (and bare A/B) so the stored reason
+            # uses A/B consistently with model_a/model_b ordering.
+            reason = (
+                reason.replace("Output A", "Output __X__")
+                .replace("Output B", "Output A")
+                .replace("Output __X__", "Output B")
+            )
+
         board.comparison_log.append(
             {
                 "sample_idx": r.sample_idx,
                 "model_a": r.model_a,
                 "model_b": r.model_b,
                 "winner": winner,
-                "reason": r.reason,
+                "reason": reason,
                 "agreement": r.agreement,
                 "text_a": r.text_a,
                 "text_b": r.text_b,
