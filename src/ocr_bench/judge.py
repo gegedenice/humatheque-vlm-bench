@@ -25,14 +25,17 @@ Compare them and decide which extraction is better overall.
 
 Evaluation criteria (in priority order):
 
-1. Faithfulness: The output must ONLY contain text from the document. Any added \
-commentary, interpretation, or notes (e.g. "it appears the text says...", \
-"the document contains...") is a serious error. Penalize heavily.
+1. Faithfulness: The output must ONLY contain text actually visible in the document. \
+Hallucinating text that is not in the image (garbled strings, repeated tokens, \
+nonsensical output) is the most serious error. Added commentary or notes \
+(e.g. "it appears the text says...") is also an error, but less severe than \
+hallucination. If a page is blank or has minimal text, saying so is acceptable — \
+fabricating content is always worse.
 
 2. Completeness: ALL visible text must be captured — headers, footers, marginalia, \
 stamps, handwritten notes. Missing any section of text is a significant penalty.
 
-3. Accuracy: Correct characters, no hallucinated words or garbled text.
+3. Accuracy: Correct characters, no garbled or fabricated words.
 
 4. Reading order: Text flows naturally as a human would read the document.
 
@@ -77,7 +80,7 @@ MAX_IMAGE_DIM = 1024
 
 
 def image_to_base64(image: Image.Image, max_dim: int = MAX_IMAGE_DIM) -> str:
-    """Convert a PIL image to a base64-encoded PNG string, resizing if needed."""
+    """Convert a PIL image to a base64-encoded JPEG string, resizing if needed."""
     if image.mode != "RGB":
         image = image.convert("RGB")
     if max(image.size) > max_dim:
@@ -85,7 +88,7 @@ def image_to_base64(image: Image.Image, max_dim: int = MAX_IMAGE_DIM) -> str:
         new_size = (int(image.width * ratio), int(image.height * ratio))
         image = image.resize(new_size, Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    image.save(buf, format="PNG")
+    image.save(buf, format="JPEG", quality=85)
     return base64.b64encode(buf.getvalue()).decode()
 
 
@@ -127,7 +130,7 @@ def build_messages(image_b64: str, prompt: str) -> list[dict[str, Any]]:
             "content": [
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
                 },
                 {"type": "text", "text": prompt},
             ],
@@ -201,9 +204,13 @@ def build_comparisons(
     rng = random.Random(seed)
     comparisons: list[Comparison] = []
 
-    for idx in indices:
-        row = dataset[idx]
+    # Pre-fetch text columns to avoid triggering image decode per row.
+    # HF Dataset supports column access (dataset["col"]), plain lists don't.
+    text_cols_data: dict[str, list] | None = None
+    if hasattr(dataset, "column_names"):
+        text_cols_data = {col: dataset[col] for col in col_names}
 
+    for idx in indices:
         # Determine which pairs need judging for this row
         needed_pairs = [
             (i, j)
@@ -213,16 +220,28 @@ def build_comparisons(
         if not needed_pairs:
             continue  # Skip image encoding entirely
 
-        image_b64 = image_to_base64(row["image"])
+        # Check text availability before decoding the image
+        valid_pairs = []
+        if text_cols_data is not None:
+            for i, j in needed_pairs:
+                text_a = text_cols_data[col_names[i]][idx] or ""
+                text_b = text_cols_data[col_names[j]][idx] or ""
+                if text_a.strip() and text_b.strip():
+                    valid_pairs.append((i, j, text_a, text_b))
+        else:
+            row = dataset[idx]
+            for i, j in needed_pairs:
+                text_a = row[col_names[i]] or ""
+                text_b = row[col_names[j]] or ""
+                if text_a.strip() and text_b.strip():
+                    valid_pairs.append((i, j, text_a, text_b))
 
-        for i, j in needed_pairs:
-            col_a, col_b = col_names[i], col_names[j]
-            text_a = row[col_a] or ""
-            text_b = row[col_b] or ""
+        if not valid_pairs:
+            continue
 
-            if not text_a.strip() or not text_b.strip():
-                continue
+        image_b64 = image_to_base64(dataset[idx]["image"])
 
+        for i, j, text_a, text_b in valid_pairs:
             swapped = rng.random() < 0.5
             prompt, swapped = build_prompt(text_a, text_b, swapped)
             messages = build_messages(image_b64, prompt)
@@ -232,8 +251,8 @@ def build_comparisons(
                     sample_idx=idx,
                     model_a=model_names[i],
                     model_b=model_names[j],
-                    col_a=col_a,
-                    col_b=col_b,
+                    col_a=col_names[i],
+                    col_b=col_names[j],
                     swapped=swapped,
                     messages=messages,
                     text_a=text_a,

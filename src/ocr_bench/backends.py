@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import stamina
@@ -23,15 +24,37 @@ class JudgeBackend(abc.ABC):
     """Base class for judge backends."""
 
     name: str
+    concurrency: int = 1
 
     @abc.abstractmethod
+    def _call_single(self, comp: Comparison) -> dict[str, str]:
+        """Run the judge on a single comparison."""
+
     def judge(self, comparisons: list[Comparison]) -> list[dict[str, str]]:
-        """Run the judge on a list of comparisons.
+        """Run the judge on a list of comparisons (concurrently if supported).
 
         Returns a list of parsed results (one per comparison).
         Each result is a dict with ``winner`` and ``reason`` keys,
         or an empty dict on failure.
         """
+        if self.concurrency <= 1 or len(comparisons) <= 1:
+            return [self._call_single(comp) for comp in comparisons]
+
+        # Concurrent execution preserving order
+        results: list[dict[str, str]] = [{}] * len(comparisons)
+        with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
+            future_to_idx = {
+                pool.submit(self._call_single, comp): i
+                for i, comp in enumerate(comparisons)
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    results[idx] = future.result()
+                except Exception as exc:
+                    logger.warning("judge_call_failed", idx=idx, error=str(exc))
+                    results[idx] = {}
+        return results
 
 
 DEFAULT_MAX_TOKENS = 1024
@@ -47,13 +70,6 @@ class InferenceProviderJudge(JudgeBackend):
         self.model = model
         self.max_tokens = max_tokens
         self.client = InferenceClient(model=model, provider=provider)  # type: ignore[invalid-argument-type]
-
-    def judge(self, comparisons: list[Comparison]) -> list[dict[str, str]]:
-        results: list[dict[str, str]] = []
-        for comp in comparisons:
-            result = self._call_single(comp)
-            results.append(result)
-        return results
 
     @stamina.retry(on=_RETRYABLE, attempts=6)
     def _call_single(self, comp: Comparison) -> dict[str, str]:
@@ -81,19 +97,16 @@ class OpenAICompatibleJudge(JudgeBackend):
         max_tokens: int = DEFAULT_MAX_TOKENS,
         api_key: str = "not-needed",
         extra_body: dict | None = None,
+        temperature: float = 0.0,
+        concurrency: int = 1,
     ):
-        self.name = f"openai@{base_url}"
+        self.name = model if model != "default" else f"openai@{base_url}"
         self.model = model
         self.max_tokens = max_tokens
+        self.temperature = temperature
         self.extra_body = extra_body if extra_body is not None else {"guided_json": JUDGE_SCHEMA}
+        self.concurrency = concurrency
         self.client = OpenAI(base_url=base_url, api_key=api_key)
-
-    def judge(self, comparisons: list[Comparison]) -> list[dict[str, str]]:
-        results: list[dict[str, str]] = []
-        for comp in comparisons:
-            result = self._call_single(comp)
-            results.append(result)
-        return results
 
     @stamina.retry(on=_RETRYABLE, attempts=3)
     def _call_single(self, comp: Comparison) -> dict[str, str]:
@@ -101,7 +114,7 @@ class OpenAICompatibleJudge(JudgeBackend):
             model=self.model,
             messages=comp.messages,  # type: ignore[invalid-argument-type]
             max_tokens=self.max_tokens,
-            temperature=0.0,
+            temperature=self.temperature,
             extra_body=self.extra_body,
         )
         raw = response.choices[0].message.content.strip()
@@ -118,7 +131,9 @@ class OpenAICompatibleJudge(JudgeBackend):
 DEFAULT_JUDGE = "novita:moonshotai/Kimi-K2.5"
 
 
-def parse_judge_spec(spec: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> JudgeBackend:
+def parse_judge_spec(
+    spec: str, max_tokens: int = DEFAULT_MAX_TOKENS, concurrency: int = 1,
+) -> JudgeBackend:
     """Parse a judge specification string into a backend.
 
     Formats:
@@ -129,21 +144,35 @@ def parse_judge_spec(spec: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> JudgeBa
       - anything else → :class:`InferenceProviderJudge` (no provider)
     """
     if spec.startswith("http://") or spec.startswith("https://"):
+        # Check for url:model format (e.g. https://...cloud/v1/:org/model)
+        url_part = spec
+        model_name = "default"
+        # Split on /v1/: to separate URL from model name
+        if "/v1/:" in spec:
+            url_part, model_name = spec.split("/v1/:", 1)
+            url_part += "/v1"
+
         # HF Inference Endpoints — OpenAI-compatible, auth via HF token
-        if ".endpoints.huggingface." in spec:
+        if ".endpoints.huggingface." in url_part:
             from huggingface_hub import get_token
 
-            base_url = spec.rstrip("/")
+            base_url = url_part.rstrip("/")
             if not base_url.endswith("/v1"):
                 base_url += "/v1"
             token = get_token() or "not-needed"
             return OpenAICompatibleJudge(
                 base_url=base_url,
+                model=model_name,
                 api_key=token,
                 max_tokens=max_tokens,
+                temperature=0.7,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                concurrency=concurrency,
             )
-        return OpenAICompatibleJudge(base_url=spec, max_tokens=max_tokens)
+        return OpenAICompatibleJudge(
+            base_url=url_part, model=model_name, max_tokens=max_tokens,
+            concurrency=concurrency,
+        )
 
     if ":" in spec:
         # provider:model format — colon must come before first slash
