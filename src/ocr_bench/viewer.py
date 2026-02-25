@@ -29,7 +29,11 @@ def load_results(repo_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any
         leaderboard_ds = load_dataset(repo_id, name="leaderboard", split="train")
         leaderboard_rows = [dict(row) for row in leaderboard_ds]
 
-    comparisons_ds = load_dataset(repo_id, name="comparisons", split="train")
+    try:
+        comparisons_ds = load_dataset(repo_id, name="comparisons", split="train")
+    except Exception:
+        logger.warning("no_comparisons_config", repo=repo_id)
+        return leaderboard_rows, []
     comparison_rows = [dict(row) for row in comparisons_ds]
 
     return leaderboard_rows, comparison_rows

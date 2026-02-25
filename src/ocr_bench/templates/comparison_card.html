@@ -72,6 +72,9 @@
   <span class="reason">"{{ reason }}"</span>
   {% endif %}
 </div>
+{% if just_voted and next_url %}
+<div hx-get="{{ next_url }}" hx-trigger="load delay:1.2s" hx-target="#comparison-container"></div>
+{% endif %}
 {% endif %}
 
 {% if has_image %}

@@ -11,6 +11,7 @@ from datasets import Dataset
 from ocr_bench.dataset import (
     DatasetError,
     _find_text_column,
+    discover_configs,
     discover_ocr_columns,
     discover_pr_configs,
     load_config_dataset,
@@ -25,23 +26,31 @@ from ocr_bench.dataset import (
 class TestDiscoverOcrColumns:
     def test_inference_info_single_entry(self):
         info = json.dumps({"column_name": "markdown_col", "model_id": "org/model-a"})
-        ds = Dataset.from_dict({
-            "image": [None], "markdown_col": ["text"], "inference_info": [info],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "markdown_col": ["text"],
+                "inference_info": [info],
+            }
+        )
         result = discover_ocr_columns(ds)
         assert result == {"markdown_col": "org/model-a"}
 
     def test_inference_info_list(self):
-        info = json.dumps([
-            {"column_name": "col_a", "model_id": "model-a"},
-            {"column_name": "col_b", "model_id": "model-b"},
-        ])
-        ds = Dataset.from_dict({
-            "image": [None],
-            "col_a": ["text a"],
-            "col_b": ["text b"],
-            "inference_info": [info],
-        })
+        info = json.dumps(
+            [
+                {"column_name": "col_a", "model_id": "model-a"},
+                {"column_name": "col_b", "model_id": "model-b"},
+            ]
+        )
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "col_a": ["text a"],
+                "col_b": ["text b"],
+                "inference_info": [info],
+            }
+        )
         result = discover_ocr_columns(ds)
         assert result == {"col_a": "model-a", "col_b": "model-b"}
 
@@ -52,11 +61,13 @@ class TestDiscoverOcrColumns:
         assert result == {"ocr_out": "fallback-model"}
 
     def test_heuristic_fallback(self):
-        ds = Dataset.from_dict({
-            "image": [None],
-            "markdown_output": ["text"],
-            "other": ["data"],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "markdown_output": ["text"],
+                "other": ["data"],
+            }
+        )
         result = discover_ocr_columns(ds)
         assert "markdown_output" in result
         assert "other" not in result
@@ -72,25 +83,31 @@ class TestDiscoverOcrColumns:
             discover_ocr_columns(ds)
 
     def test_malformed_json_falls_back(self):
-        ds = Dataset.from_dict({
-            "image": [None],
-            "ocr_col": ["text"],
-            "inference_info": ["not-json"],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "ocr_col": ["text"],
+                "inference_info": ["not-json"],
+            }
+        )
         result = discover_ocr_columns(ds)
         assert "ocr_col" in result
 
     def test_disambiguates_duplicate_models(self):
-        info = json.dumps([
-            {"column_name": "col_a", "model_id": "org/same-model"},
-            {"column_name": "col_b", "model_id": "org/same-model"},
-        ])
-        ds = Dataset.from_dict({
-            "image": [None],
-            "col_a": ["a"],
-            "col_b": ["b"],
-            "inference_info": [info],
-        })
+        info = json.dumps(
+            [
+                {"column_name": "col_a", "model_id": "org/same-model"},
+                {"column_name": "col_b", "model_id": "org/same-model"},
+            ]
+        )
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "col_a": ["a"],
+                "col_b": ["b"],
+                "inference_info": [info],
+            }
+        )
         result = discover_ocr_columns(ds)
         assert result["col_a"] == "same-model (col_a)"
         assert result["col_b"] == "same-model (col_b)"
@@ -112,40 +129,48 @@ class TestDiscoverOcrColumns:
 class TestFindTextColumn:
     def test_prefers_markdown_over_text(self):
         """BPL bug: text appears before markdown in column order, should pick markdown."""
-        ds = Dataset.from_dict({
-            "image": [None],
-            "text": ["tesseract baseline"],
-            "markdown": ["model output"],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "text": ["tesseract baseline"],
+                "markdown": ["model output"],
+            }
+        )
         assert _find_text_column(ds) == "markdown"
 
     def test_prefers_inference_info_column_name(self):
         """inference_info column_name should take highest priority."""
         info = json.dumps({"column_name": "markdown", "model_id": "model-a"})
-        ds = Dataset.from_dict({
-            "image": [None],
-            "text": ["baseline"],
-            "markdown": ["model output"],
-            "inference_info": [info],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "text": ["baseline"],
+                "markdown": ["model output"],
+                "inference_info": [info],
+            }
+        )
         assert _find_text_column(ds) == "markdown"
 
     def test_inference_info_missing_column_falls_back(self):
         """If inference_info references a missing column, fall back to heuristic."""
         info = json.dumps({"column_name": "nonexistent", "model_id": "model-a"})
-        ds = Dataset.from_dict({
-            "image": [None],
-            "ocr_output": ["text"],
-            "inference_info": [info],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "ocr_output": ["text"],
+                "inference_info": [info],
+            }
+        )
         assert _find_text_column(ds) == "ocr_output"
 
     def test_prefers_ocr_over_text(self):
-        ds = Dataset.from_dict({
-            "image": [None],
-            "text": ["baseline"],
-            "ocr_output": ["model output"],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "text": ["baseline"],
+                "ocr_output": ["model output"],
+            }
+        )
         assert _find_text_column(ds) == "ocr_output"
 
     def test_returns_text_as_last_resort(self):
@@ -158,12 +183,14 @@ class TestFindTextColumn:
 
     def test_inference_info_list_format(self):
         info = json.dumps([{"column_name": "markdown", "model_id": "model-a"}])
-        ds = Dataset.from_dict({
-            "image": [None],
-            "text": ["baseline"],
-            "markdown": ["output"],
-            "inference_info": [info],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "text": ["baseline"],
+                "markdown": ["output"],
+                "inference_info": [info],
+            }
+        )
         assert _find_text_column(ds) == "markdown"
 
 
@@ -238,6 +265,38 @@ class TestDiscoverPrConfigs:
 
 
 # ---------------------------------------------------------------------------
+# discover_configs (main branch)
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverConfigs:
+    @patch("ocr_bench.dataset.get_dataset_config_names")
+    def test_returns_non_default_configs(self, mock_get):
+        mock_get.return_value = ["default", "model_a", "model_b"]
+        result = discover_configs("repo/id")
+        assert result == ["model_a", "model_b"]
+        mock_get.assert_called_once_with("repo/id")
+
+    @patch("ocr_bench.dataset.get_dataset_config_names")
+    def test_returns_empty_when_only_default(self, mock_get):
+        mock_get.return_value = ["default"]
+        result = discover_configs("repo/id")
+        assert result == []
+
+    @patch("ocr_bench.dataset.get_dataset_config_names")
+    def test_returns_empty_on_error(self, mock_get):
+        mock_get.side_effect = Exception("repo not found")
+        result = discover_configs("repo/id")
+        assert result == []
+
+    @patch("ocr_bench.dataset.get_dataset_config_names")
+    def test_returns_all_when_no_default(self, mock_get):
+        mock_get.return_value = ["config_a", "config_b"]
+        result = discover_configs("repo/id")
+        assert result == ["config_a", "config_b"]
+
+
+# ---------------------------------------------------------------------------
 # load_config_dataset
 # ---------------------------------------------------------------------------
 
@@ -245,22 +304,26 @@ class TestDiscoverPrConfigs:
 class TestLoadConfigDataset:
     @patch("ocr_bench.dataset.load_dataset")
     def test_merges_two_configs(self, mock_load):
-        ds_a = Dataset.from_dict({
-            "image": [None, None],
-            "markdown": ["text_a1", "text_a2"],
-            "inference_info": [
-                json.dumps({"model_id": "model-a"}),
-                json.dumps({"model_id": "model-a"}),
-            ],
-        })
-        ds_b = Dataset.from_dict({
-            "image": [None, None],
-            "markdown": ["text_b1", "text_b2"],
-            "inference_info": [
-                json.dumps({"model_id": "model-b"}),
-                json.dumps({"model_id": "model-b"}),
-            ],
-        })
+        ds_a = Dataset.from_dict(
+            {
+                "image": [None, None],
+                "markdown": ["text_a1", "text_a2"],
+                "inference_info": [
+                    json.dumps({"model_id": "model-a"}),
+                    json.dumps({"model_id": "model-a"}),
+                ],
+            }
+        )
+        ds_b = Dataset.from_dict(
+            {
+                "image": [None, None],
+                "markdown": ["text_b1", "text_b2"],
+                "inference_info": [
+                    json.dumps({"model_id": "model-b"}),
+                    json.dumps({"model_id": "model-b"}),
+                ],
+            }
+        )
         mock_load.side_effect = [ds_a, ds_b]
 
         ds, ocr_cols = load_config_dataset("repo/id", ["cfg_a", "cfg_b"])
@@ -276,9 +339,7 @@ class TestLoadConfigDataset:
         ds = Dataset.from_dict({"image": [None], "markdown": ["text"]})
         mock_load.return_value = ds
 
-        load_config_dataset(
-            "repo/id", ["cfg"], pr_revisions={"cfg": "refs/pr/1"}
-        )
+        load_config_dataset("repo/id", ["cfg"], pr_revisions={"cfg": "refs/pr/1"})
         mock_load.assert_called_once_with(
             path="repo/id", name="cfg", split="train", revision="refs/pr/1"
         )
@@ -297,11 +358,13 @@ class TestLoadFlatDataset:
     @patch("ocr_bench.dataset.load_dataset")
     def test_auto_discover(self, mock_load):
         info = json.dumps({"column_name": "ocr_out", "model_id": "model-x"})
-        ds = Dataset.from_dict({
-            "image": [None],
-            "ocr_out": ["text"],
-            "inference_info": [info],
-        })
+        ds = Dataset.from_dict(
+            {
+                "image": [None],
+                "ocr_out": ["text"],
+                "inference_info": [info],
+            }
+        )
         mock_load.return_value = ds
 
         result_ds, ocr_cols = load_flat_dataset("repo/id")

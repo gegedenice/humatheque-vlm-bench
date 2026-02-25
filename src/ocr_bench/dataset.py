@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import structlog
-from datasets import Dataset, load_dataset
+from datasets import Dataset, get_dataset_config_names, load_dataset
 from huggingface_hub import HfApi
 
 logger = structlog.get_logger()
@@ -37,7 +37,9 @@ def discover_ocr_columns(dataset: Dataset) -> dict[str, str]:
     columns: dict[str, str] = {}
 
     try:
-        info_raw = dataset[0].get("inference_info")
+        if "inference_info" not in dataset.column_names:
+            raise KeyError("no inference_info column")
+        info_raw = dataset["inference_info"][0]  # column access avoids image decode
         if info_raw:
             info = json.loads(info_raw)
             if not isinstance(info, list):
@@ -58,9 +60,7 @@ def discover_ocr_columns(dataset: Dataset) -> dict[str, str]:
                 columns[col] = col
 
     if not columns:
-        raise DatasetError(
-            f"No OCR columns found. Available columns: {dataset.column_names}"
-        )
+        raise DatasetError(f"No OCR columns found. Available columns: {dataset.column_names}")
 
     # Disambiguate duplicates
     model_counts: dict[str, int] = {}
@@ -115,15 +115,27 @@ def discover_pr_configs(
             config = title[title.rindex("[") + 1 : -1].strip()
             if config:
                 if merge:
-                    api.merge_pull_request(
-                        repo_id, disc.num, repo_type="dataset"
-                    )
+                    api.merge_pull_request(repo_id, disc.num, repo_type="dataset")
                     logger.info("merged_pr", pr=disc.num, config=config)
                 else:
                     revisions[config] = f"refs/pr/{disc.num}"
                 config_names.append(config)
 
     return config_names, revisions
+
+
+def discover_configs(repo_id: str) -> list[str]:
+    """List non-default configs from the main branch of a Hub dataset.
+
+    Returns:
+        Config names excluding "default", or empty list if none found.
+    """
+    try:
+        configs = get_dataset_config_names(repo_id)
+    except Exception as exc:
+        logger.info("no_configs_on_main", repo=repo_id, reason=str(exc))
+        return []
+    return [c for c in configs if c != "default"]
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +167,7 @@ def load_config_dataset(
         raise DatasetError("No config names provided")
 
     pr_revisions = pr_revisions or {}
-    unified_rows: list[dict] | None = None
+    unified: Dataset | None = None
     ocr_columns: dict[str, str] = {}
 
     for config in config_names:
@@ -173,42 +185,49 @@ def load_config_dataset(
             continue
 
         # Extract model_id from inference_info if available
-        model_id = config
-        try:
-            info_raw = ds[0].get("inference_info")
-            if info_raw:
-                info = json.loads(info_raw)
-                if isinstance(info, list):
-                    info = info[0]
-                model_id = info.get("model_id", info.get("model_name", config))
-        except (json.JSONDecodeError, TypeError, KeyError):
-            pass
-
+        model_id = _extract_model_id(ds, config)
         ocr_columns[config] = model_id
 
-        # Build unified rows
-        if unified_rows is None:
-            # First config: copy all non-OCR columns + add this config's text
-            unified_rows = []
-            for i in range(len(ds)):
-                row = {k: ds[i][k] for k in ds.column_names if k != text_col}
-                row[config] = ds[i][text_col]
-                unified_rows.append(row)
+        # Build unified dataset using Arrow-level ops (no per-row image decode)
+        text_values = ds[text_col]  # column access — no image decoding
+        if unified is None:
+            # First config: keep all columns except text_col, add text as config name
+            drop = [text_col] if text_col != config else []
+            unified = ds.remove_columns(drop) if drop else ds
+            if config != text_col:
+                unified = unified.add_column(config, text_values)
+            # Also rename text_col to config if they differ and text_col was kept
         else:
-            if len(ds) != len(unified_rows):
+            if len(ds) != len(unified):
                 logger.warning(
                     "config_length_mismatch",
                     config=config,
-                    expected=len(unified_rows),
+                    expected=len(unified),
                     got=len(ds),
                 )
-            for i in range(min(len(ds), len(unified_rows))):
-                unified_rows[i][config] = ds[i][text_col]
+                text_values = text_values[: len(unified)]
+            unified = unified.add_column(config, text_values)
 
-    if unified_rows is None:
+    if unified is None:
         raise DatasetError("No configs loaded successfully")
 
-    return Dataset.from_list(unified_rows), ocr_columns
+    return unified, ocr_columns
+
+
+def _extract_model_id(ds: Dataset, config: str) -> str:
+    """Extract model_id from inference_info in first row, falling back to config name."""
+    if "inference_info" not in ds.column_names:
+        return config
+    try:
+        info_raw = ds["inference_info"][0]  # column access avoids image decode
+        if info_raw:
+            info = json.loads(info_raw)
+            if isinstance(info, list):
+                info = info[0]
+            return info.get("model_id", info.get("model_name", config))
+    except (json.JSONDecodeError, TypeError, KeyError, IndexError):
+        pass
+    return config
 
 
 def _find_text_column(ds: Dataset) -> str | None:
@@ -220,18 +239,19 @@ def _find_text_column(ds: Dataset) -> str | None:
       3. First column matching ``ocr`` (case-insensitive).
       4. Column named exactly ``text``.
     """
-    # Try inference_info first
-    try:
-        info_raw = ds[0].get("inference_info")
-        if info_raw:
-            info = json.loads(info_raw)
-            if isinstance(info, list):
-                info = info[0]
-            col_name = info.get("column_name", "")
-            if col_name and col_name in ds.column_names:
-                return col_name
-    except (json.JSONDecodeError, TypeError, KeyError, IndexError):
-        pass
+    # Try inference_info first (column access avoids image decoding)
+    if "inference_info" in ds.column_names:
+        try:
+            info_raw = ds["inference_info"][0]
+            if info_raw:
+                info = json.loads(info_raw)
+                if isinstance(info, list):
+                    info = info[0]
+                col_name = info.get("column_name", "")
+                if col_name and col_name in ds.column_names:
+                    return col_name
+        except (json.JSONDecodeError, TypeError, KeyError, IndexError):
+            pass
 
     # Prioritized heuristic: markdown > ocr > text
     for pattern in ["markdown", "ocr"]:
@@ -269,9 +289,7 @@ def load_flat_dataset(
         # Validate columns exist
         for col in columns:
             if col not in ds.column_names:
-                raise DatasetError(
-                    f"Column '{col}' not found. Available: {ds.column_names}"
-                )
+                raise DatasetError(f"Column '{col}' not found. Available: {ds.column_names}")
         ocr_columns = {col: col for col in columns}
     else:
         ocr_columns = discover_ocr_columns(ds)

@@ -17,6 +17,7 @@ from ocr_bench.backends import (
 )
 from ocr_bench.dataset import (
     DatasetError,
+    discover_configs,
     discover_pr_configs,
     load_config_dataset,
     load_flat_dataset,
@@ -50,10 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     judge.add_argument(
         "--configs", nargs="+", default=None, help="Config-per-model: list of config names"
     )
+    judge.add_argument("--from-prs", action="store_true", help="Force PR-based config discovery")
     judge.add_argument(
-        "--from-prs", action="store_true", help="Auto-discover configs from open PRs"
+        "--merge",
+        action="store_true",
+        help="Merge PRs to main after discovery (default: load via revision)",
     )
-    judge.add_argument("--merge-prs", action="store_true", help="Merge PRs before loading")
 
     # Judge
     judge.add_argument(
@@ -74,16 +77,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # Output
-    judge.add_argument("--save-results", default=None, help="HF repo id to publish results to")
+    judge.add_argument(
+        "--save-results",
+        default=None,
+        help="HF repo id to publish results to (default: {dataset}-results)",
+    )
+    judge.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Don't publish results (default: publish to {dataset}-results)",
+    )
     judge.add_argument(
         "--full-rejudge",
         action="store_true",
         help="Re-judge all pairs, ignoring existing comparisons in --save-results repo",
     )
     judge.add_argument(
-        "--adaptive",
+        "--no-adaptive",
         action="store_true",
-        help="Stop early when rankings are statistically resolved (non-overlapping CIs)",
+        help="Disable adaptive stopping (default: adaptive is on)",
+    )
+    judge.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of concurrent judge API calls (default: 1)",
     )
 
     # --- run subcommand ---
@@ -179,27 +197,75 @@ def _convert_results(
     return results
 
 
+def _resolve_results_repo(dataset: str, save_results: str | None, no_publish: bool) -> str | None:
+    """Derive the results repo id. Returns None if publishing is disabled."""
+    if no_publish:
+        return None
+    if save_results:
+        return save_results
+    return f"{dataset}-results"
+
+
 def cmd_judge(args: argparse.Namespace) -> None:
     """Orchestrate: load → compare → judge → elo → print → publish."""
-    # --- Load dataset ---
-    if args.from_prs or args.configs:
-        if args.from_prs:
-            config_names, pr_revisions = discover_pr_configs(args.dataset, merge=args.merge_prs)
-            if not config_names:
-                raise DatasetError("No configs found in open PRs")
-            console.print(f"Discovered {len(config_names)} configs from PRs: {config_names}")
-        else:
-            config_names = args.configs
-            pr_revisions = {}
+    # --- Resolve flags ---
+    adaptive = not args.no_adaptive
+    merge = args.merge
+    results_repo = _resolve_results_repo(args.dataset, args.save_results, args.no_publish)
+    from_prs = False  # track for metadata
 
+    if results_repo:
+        console.print(f"Results will be published to [bold]{results_repo}[/bold]")
+
+    # --- Load dataset (cascading auto-detection) ---
+    if args.configs:
+        # Explicit configs — use them directly
+        config_names = args.configs
+        ds, ocr_columns = load_config_dataset(args.dataset, config_names, split=args.split)
+    elif args.columns:
+        # Explicit columns — flat loading
+        ds, ocr_columns = load_flat_dataset(args.dataset, split=args.split, columns=args.columns)
+    elif args.from_prs:
+        # Forced PR discovery
+        config_names, pr_revisions = discover_pr_configs(args.dataset, merge=merge)
+        if not config_names:
+            raise DatasetError("No configs found in open PRs")
+        from_prs = True
+        console.print(f"Discovered {len(config_names)} configs from PRs: {config_names}")
         ds, ocr_columns = load_config_dataset(
             args.dataset,
             config_names,
             split=args.split,
-            pr_revisions=pr_revisions if args.from_prs else None,
+            pr_revisions=pr_revisions if not merge else None,
         )
     else:
-        ds, ocr_columns = load_flat_dataset(args.dataset, split=args.split, columns=args.columns)
+        # Auto-detect: PRs + main branch configs combined, fall back to flat
+        pr_configs, pr_revisions = discover_pr_configs(args.dataset, merge=merge)
+        main_configs = discover_configs(args.dataset)
+
+        # Combine: PR configs + main configs not already in PRs
+        config_names = list(pr_configs)
+        for mc in main_configs:
+            if mc not in pr_configs:
+                config_names.append(mc)
+
+        if config_names:
+            if pr_configs:
+                from_prs = True
+                console.print(f"Auto-detected {len(pr_configs)} configs from PRs: {pr_configs}")
+            if main_configs:
+                main_only = [c for c in main_configs if c not in pr_configs]
+                if main_only:
+                    console.print(f"Auto-detected {len(main_only)} configs on main: {main_only}")
+            ds, ocr_columns = load_config_dataset(
+                args.dataset,
+                config_names,
+                split=args.split,
+                pr_revisions=pr_revisions if pr_configs else None,
+            )
+        else:
+            # No configs anywhere — fall back to flat loading
+            ds, ocr_columns = load_flat_dataset(args.dataset, split=args.split)
 
     console.print(f"Loaded {len(ds)} samples with {len(ocr_columns)} models:")
     for col, model in ocr_columns.items():
@@ -210,18 +276,16 @@ def cmd_judge(args: argparse.Namespace) -> None:
     existing_meta_rows: list[dict] = []
     skip_pairs: set[tuple[str, str]] | None = None
 
-    if args.save_results and not args.full_rejudge:
-        existing_results = load_existing_comparisons(args.save_results)
+    if results_repo and not args.full_rejudge:
+        existing_results = load_existing_comparisons(results_repo)
         if existing_results:
-            judged_pairs = {
-                _normalize_pair(r.model_a, r.model_b) for r in existing_results
-            }
+            judged_pairs = {_normalize_pair(r.model_a, r.model_b) for r in existing_results}
             skip_pairs = judged_pairs
             console.print(
                 f"\nIncremental mode: {len(existing_results)} existing comparisons "
                 f"across {len(judged_pairs)} model pairs — skipping those."
             )
-            existing_meta_rows = load_existing_metadata(args.save_results)
+            existing_meta_rows = load_existing_metadata(results_repo)
         else:
             console.print("\nNo existing comparisons found — full judge run.")
 
@@ -229,7 +293,10 @@ def cmd_judge(args: argparse.Namespace) -> None:
 
     # --- Judge setup (shared by both paths) ---
     model_specs = args.models or [DEFAULT_JUDGE]
-    judges = [parse_judge_spec(spec, max_tokens=args.max_tokens) for spec in model_specs]
+    judges = [
+        parse_judge_spec(spec, max_tokens=args.max_tokens, concurrency=args.concurrency)
+        for spec in model_specs
+    ]
     is_jury = len(judges) > 1
 
     def _judge_batch(batch_comps: list[Comparison]) -> list[ComparisonResult]:
@@ -245,7 +312,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
             aggregated = all_judge_outputs[0]
         return _convert_results(batch_comps, aggregated)
 
-    if args.adaptive:
+    if adaptive:
         # --- Adaptive stopping: batch-by-batch with convergence check ---
         from itertools import combinations as _combs
 
@@ -264,9 +331,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
 
         new_results: list[ComparisonResult] = []
         total_comparisons = 0
-        for batch_num, batch_start in enumerate(
-            range(0, len(all_indices), batch_samples)
-        ):
+        for batch_num, batch_start in enumerate(range(0, len(all_indices), batch_samples)):
             batch_indices = all_indices[batch_start : batch_start + batch_samples]
             batch_comps = build_comparisons(
                 ds,
@@ -284,14 +349,10 @@ def cmd_judge(args: argparse.Namespace) -> None:
             # batch_comps goes out of scope → GC can free images
 
             total = len(existing_results) + len(new_results)
-            console.print(
-                f"  Batch {batch_num + 1}: {len(batch_results)} new, {total} total"
-            )
+            console.print(f"  Batch {batch_num + 1}: {len(batch_results)} new, {total} total")
 
             if total >= min_before_check:
-                board = compute_elo(
-                    existing_results + new_results, model_names
-                )
+                board = compute_elo(existing_results + new_results, model_names)
                 # Show CI gaps for each adjacent pair
                 ranked = board.ranked
                 if board.elo_ci:
@@ -307,10 +368,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
                                 status = "[green]ok[/green]"
                             else:
                                 status = f"[yellow]overlap {-gap:.0f}[/yellow]"
-                            gaps.append(
-                                f"    {hi_model} vs {lo_model}: "
-                                f"gap={gap:+.0f} {status}"
-                            )
+                            gaps.append(f"    {hi_model} vs {lo_model}: gap={gap:+.0f} {status}")
                     if gaps:
                         console.print("  CI gaps:")
                         for g in gaps:
@@ -324,9 +382,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
                     )
                     break
 
-        console.print(
-            f"\n{len(new_results)}/{total_comparisons} valid comparisons"
-        )
+        console.print(f"\n{len(new_results)}/{total_comparisons} valid comparisons")
     else:
         # --- Standard single-pass flow ---
         comparisons = build_comparisons(
@@ -345,13 +401,11 @@ def cmd_judge(args: argparse.Namespace) -> None:
             return
 
         if not comparisons:
-            console.print(
-                "[green]All pairs already judged — refitting leaderboard.[/green]"
-            )
+            console.print("[green]All pairs already judged — refitting leaderboard.[/green]")
             board = compute_elo(existing_results, model_names)
             console.print()
             print_leaderboard(board)
-            if args.save_results:
+            if results_repo:
                 metadata = EvalMetadata(
                     source_dataset=args.dataset,
                     judge_models=[],
@@ -359,17 +413,15 @@ def cmd_judge(args: argparse.Namespace) -> None:
                     max_samples=args.max_samples or len(ds),
                     total_comparisons=0,
                     valid_comparisons=0,
-                    from_prs=args.from_prs,
+                    from_prs=from_prs,
                 )
                 publish_results(
-                    args.save_results,
+                    results_repo,
                     board,
                     metadata,
                     existing_metadata=existing_meta_rows,
                 )
-                console.print(
-                    f"\nResults published to [bold]{args.save_results}[/bold]"
-                )
+                console.print(f"\nResults published to [bold]{results_repo}[/bold]")
             return
 
         if is_jury:
@@ -380,9 +432,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
 
         new_results = _judge_batch(comparisons)
         total_comparisons = len(comparisons)
-        console.print(
-            f"\n{len(new_results)}/{total_comparisons} valid comparisons"
-        )
+        console.print(f"\n{len(new_results)}/{total_comparisons} valid comparisons")
 
     # --- Merge existing + new, compute ELO ---
     all_results = existing_results + new_results
@@ -391,7 +441,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
     print_leaderboard(board)
 
     # --- Publish ---
-    if args.save_results:
+    if results_repo:
         metadata = EvalMetadata(
             source_dataset=args.dataset,
             judge_models=[j.name for j in judges],
@@ -399,12 +449,10 @@ def cmd_judge(args: argparse.Namespace) -> None:
             max_samples=args.max_samples or len(ds),
             total_comparisons=total_comparisons,
             valid_comparisons=len(new_results),
-            from_prs=args.from_prs,
+            from_prs=from_prs,
         )
-        publish_results(
-            args.save_results, board, metadata, existing_metadata=existing_meta_rows
-        )
-        console.print(f"\nResults published to [bold]{args.save_results}[/bold]")
+        publish_results(results_repo, board, metadata, existing_metadata=existing_meta_rows)
+        console.print(f"\nResults published to [bold]{results_repo}[/bold]")
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -494,21 +542,12 @@ def cmd_run(args: argparse.Namespace) -> None:
         console.print("\n[bold]Waiting for jobs to complete...[/bold]")
         poll_jobs(jobs)
         console.print("\n[bold green]All jobs finished![/bold green]")
-        console.print(
-            f"\nMerge PRs at: https://huggingface.co/datasets/{args.output_repo}/community"
-        )
-        console.print("\nThen evaluate:")
-        console.print(
-            f"  ocr-bench judge {args.output_repo} --from-prs "
-            f"--save-results {args.output_repo}-results"
-        )
+        console.print("\nEvaluate:")
+        console.print(f"  ocr-bench judge {args.output_repo}")
     else:
         console.print("\nJobs running in background.")
         console.print("Check status at: https://huggingface.co/settings/jobs")
-        console.print(
-            f"When complete, merge PRs at: "
-            f"https://huggingface.co/datasets/{args.output_repo}/community"
-        )
+        console.print(f"When complete: ocr-bench judge {args.output_repo}")
 
 
 def cmd_view(args: argparse.Namespace) -> None:

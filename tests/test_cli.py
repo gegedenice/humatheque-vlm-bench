@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ocr_bench.cli import build_parser
+from ocr_bench.cli import _resolve_results_repo, build_parser
 
 
 class TestBuildParser:
@@ -17,7 +17,9 @@ class TestBuildParser:
         assert args.columns is None
         assert args.configs is None
         assert args.from_prs is False
-        assert args.merge_prs is False
+        assert args.merge is False
+        assert args.no_adaptive is False
+        assert args.no_publish is False
         assert args.models is None
         assert args.max_samples is None
         assert args.seed == 42
@@ -51,6 +53,21 @@ class TestBuildParser:
         parser = build_parser()
         args = parser.parse_args(["judge", "user/dataset", "--from-prs"])
         assert args.from_prs is True
+
+    def test_merge_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["judge", "user/dataset", "--merge"])
+        assert args.merge is True
+
+    def test_no_adaptive_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["judge", "user/dataset", "--no-adaptive"])
+        assert args.no_adaptive is True
+
+    def test_no_publish_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["judge", "user/dataset", "--no-publish"])
+        assert args.no_publish is True
 
     def test_max_samples_and_seed(self):
         parser = build_parser()
@@ -91,13 +108,20 @@ class TestBuildParser:
         args = parser.parse_args(["judge", "user/dataset"])
         assert args.full_rejudge is False
 
-    def test_adaptive_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["judge", "user/dataset", "--adaptive"])
-        assert args.adaptive is True
 
-    def test_adaptive_defaults_false(self):
-        parser = build_parser()
-        args = parser.parse_args(["judge", "user/dataset"])
-        assert args.adaptive is False
+class TestResolveResultsRepo:
+    def test_auto_derives_from_dataset(self):
+        result = _resolve_results_repo("user/my-dataset", None, False)
+        assert result == "user/my-dataset-results"
 
+    def test_explicit_save_results_overrides(self):
+        result = _resolve_results_repo("user/my-dataset", "user/custom-results", False)
+        assert result == "user/custom-results"
+
+    def test_no_publish_returns_none(self):
+        result = _resolve_results_repo("user/my-dataset", None, True)
+        assert result is None
+
+    def test_no_publish_overrides_explicit(self):
+        result = _resolve_results_repo("user/my-dataset", "user/custom", True)
+        assert result is None
