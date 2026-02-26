@@ -97,9 +97,23 @@ def _interleave_by_sample(
     return result
 
 
+def _has_overlapping_cis(
+    model_a: str,
+    model_b: str,
+    ci_map: dict[str, tuple[float, float]],
+) -> bool:
+    """Check if two models have overlapping confidence intervals."""
+    if model_a not in ci_map or model_b not in ci_map:
+        return True  # assume overlapping if CI data missing for a model
+    a_low, a_high = ci_map[model_a]
+    b_low, b_high = ci_map[model_b]
+    return max(a_low, b_low) < min(a_high, b_high)
+
+
 def build_validation_comparisons(
     comparison_rows: list[dict[str, Any]],
     *,
+    leaderboard_rows: list[dict[str, Any]] | None = None,
     n: int | None = None,
     prioritize_splits: bool = True,
     seed: int = 42,
@@ -108,6 +122,9 @@ def build_validation_comparisons(
 
     Args:
         comparison_rows: Rows from the comparisons config of a results dataset.
+        leaderboard_rows: Leaderboard rows with elo_low/elo_high for focus-pairs.
+            When provided, comparisons between models with overlapping CIs are
+            prioritized (those are where human input can change the ranking).
         n: Max number of comparisons to include (None = all).
         prioritize_splits: Show split-jury cases first (most informative).
         seed: Random seed for position-bias randomization.
@@ -144,7 +161,41 @@ def build_validation_comparisons(
             )
         )
 
-    if prioritize_splits:
+    # Build CI map from leaderboard rows (if available and has CI data)
+    ci_map: dict[str, tuple[float, float]] = {}
+    if leaderboard_rows:
+        for row in leaderboard_rows:
+            model = row.get("model", "")
+            lo = row.get("elo_low")
+            hi = row.get("elo_high")
+            if model and lo is not None and hi is not None:
+                ci_map[model] = (lo, hi)
+
+    if prioritize_splits and ci_map:
+        # 4-tier priority: overlapping+split > overlapping+unanimous >
+        # resolved+split > resolved+unanimous
+        overlap_split: list[ValidationComparison] = []
+        overlap_unanimous: list[ValidationComparison] = []
+        resolved_split: list[ValidationComparison] = []
+        resolved_unanimous: list[ValidationComparison] = []
+        for c in comps:
+            overlapping = _has_overlapping_cis(c.model_a, c.model_b, ci_map)
+            split = _is_split_jury(c.agreement)
+            if overlapping and split:
+                overlap_split.append(c)
+            elif overlapping:
+                overlap_unanimous.append(c)
+            elif split:
+                resolved_split.append(c)
+            else:
+                resolved_unanimous.append(c)
+        ordered = (
+            _interleave_by_sample(overlap_split)
+            + _interleave_by_sample(overlap_unanimous)
+            + _interleave_by_sample(resolved_split)
+            + _interleave_by_sample(resolved_unanimous)
+        )
+    elif prioritize_splits:
         splits = [c for c in comps if _is_split_jury(c.agreement)]
         unanimous = [c for c in comps if not _is_split_jury(c.agreement)]
         ordered = _interleave_by_sample(splits) + _interleave_by_sample(unanimous)

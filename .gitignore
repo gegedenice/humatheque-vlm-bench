@@ -3,3 +3,12 @@ __pycache__/
 .venv/
 dist/
 *.egg-info/
+
+# Screenshots and temp files from dev/testing
+*.png
+*.jpeg
+*.json
+!pyproject.toml
+.playwright-mcp/
+NEXT_SESSION_PROMPT.md
+*.json.bak

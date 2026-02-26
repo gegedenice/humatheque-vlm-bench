@@ -151,7 +151,10 @@ def create_app(
         img_loader = ImageLoader(source_dataset, from_prs=from_prs)
 
     validation_comps = build_validation_comparisons(
-        comparison_rows, n=n_validate, prioritize_splits=True
+        comparison_rows,
+        leaderboard_rows=leaderboard_rows,
+        n=n_validate,
+        prioritize_splits=True,
     )
 
     models = sorted(
