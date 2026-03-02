@@ -37,8 +37,8 @@ class TestModelConfig:
 
 
 class TestModelRegistry:
-    def test_has_four_core_models(self):
-        assert len(MODEL_REGISTRY) == 4
+    def test_has_five_core_models(self):
+        assert len(MODEL_REGISTRY) == 5
 
     def test_default_models_exist_in_registry(self):
         for slug in DEFAULT_MODELS:
@@ -106,8 +106,8 @@ class TestLaunchOcrJobs:
 
         jobs = launch_ocr_jobs("input/ds", "output/repo", api=mock_api)
 
-        assert len(jobs) == 4
-        assert mock_api.run_uv_job.call_count == 4
+        assert len(jobs) == 5
+        assert mock_api.run_uv_job.call_count == 5
         for job in jobs:
             assert isinstance(job, JobRun)
             assert job.status == "running"

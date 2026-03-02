@@ -215,7 +215,11 @@ def load_config_dataset(
 
 
 def _extract_model_id(ds: Dataset, config: str) -> str:
-    """Extract model_id from inference_info in first row, falling back to config name."""
+    """Extract model_id from inference_info in first row, falling back to config name.
+
+    Takes the *last* entry in the inference_info list, since OCR scripts append
+    new entries — the last one is the model that actually produced this config.
+    """
     if "inference_info" not in ds.column_names:
         return config
     try:
@@ -223,7 +227,7 @@ def _extract_model_id(ds: Dataset, config: str) -> str:
         if info_raw:
             info = json.loads(info_raw)
             if isinstance(info, list):
-                info = info[0]
+                info = info[-1]
             return info.get("model_id", info.get("model_name", config))
     except (json.JSONDecodeError, TypeError, KeyError, IndexError):
         pass

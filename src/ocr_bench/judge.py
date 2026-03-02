@@ -40,8 +40,10 @@ stamps, handwritten notes. Missing any section of text is a significant penalty.
 4. Reading order: Text flows naturally as a human would read the document.
 
 5. Formatting: Clean structure. Ignore bounding box tags like <|ref|> <|det|> \
-if present. Do NOT prefer fancier markdown formatting — plain accurate text is \
-better than nicely formatted but incomplete text.
+if present. Markdown formatting markers (#, **, *, etc.) are neutral — do not \
+penalise or reward their presence. Judge only on the actual text content, not \
+on whether it is wrapped in markup. Plain text and markdown-formatted text that \
+contain the same words are equivalent.
 
 If both outputs capture the same text with similar accuracy, respond with "tie". \
 Only pick a winner when there is a clear quality difference.

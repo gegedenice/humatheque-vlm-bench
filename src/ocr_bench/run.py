@@ -48,9 +48,15 @@ MODEL_REGISTRY: dict[str, ModelConfig] = {
         size="1.7B",
         default_flavor="l4x1",
     ),
+    "firered-ocr": ModelConfig(
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/firered-ocr.py",
+        model_id="FireRedTeam/FireRed-OCR",
+        size="2.1B",
+        default_flavor="l4x1",
+    ),
 }
 
-DEFAULT_MODELS = ["glm-ocr", "deepseek-ocr", "lighton-ocr-2", "dots-ocr"]
+DEFAULT_MODELS = ["glm-ocr", "deepseek-ocr", "lighton-ocr-2", "dots-ocr", "firered-ocr"]
 
 
 @dataclass
