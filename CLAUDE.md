@@ -3,6 +3,7 @@
 OCR model evaluation toolkit. VLM-as-judge with per-dataset leaderboards on Hugging Face Hub.
 
 > Historical decisions, smoke tests, and completed phase details are in [ARCHIVE.md](ARCHIVE.md).
+> PoC release plan and checklist in [POC-CHECKLIST.md](POC-CHECKLIST.md).
 
 ## What This Project Does
 
@@ -10,9 +11,9 @@ Lets anyone answer: **"Which OCR model works best for MY documents?"**
 
 Rankings change by document type — manuscript cards, printed books, historical texts, tables all produce different winners. This tool creates per-collection leaderboards.
 
-## Current State (2026-02-25)
+## Current State (2026-03-02)
 
-**220 tests passing**, ruff clean. Full pipeline works with smart defaults:
+**233 tests passing**, ruff clean. Full pipeline works with smart defaults:
 
 ```
 ocr-bench run <input-ds> <output-repo> --max-samples 50
@@ -54,17 +55,22 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 - [x] Re-run BPL judge with `--save-results` using new publication workflow
 - [x] Smart defaults: zero-flag `judge` command (auto-detect configs, auto-derive results repo, adaptive on by default)
 - [x] Concurrent judge calls (`--concurrency N`)
-- [x] Britannica E2E: 4 models, 2 judges (Qwen3-VL-235B + Qwen3.5-35B-A3B)
+- [x] Britannica E2E: 5 models, 2 judges (Qwen3-VL-235B + Qwen3.5-35B-A3B)
 - [x] Performance: Arrow-level dataset merge (no per-row image decode), JPEG encoding, text column pre-fetch
+- [x] FireRed-OCR (2.1B) added to registry + benchmarked on Britannica (#3 behind GLM-OCR/LightOnOCR-2)
+- [x] Judge prompt: markdown formatting markers now neutral (not penalised or rewarded)
+- [x] Fix `_extract_model_id()`: take last inference_info entry (not first) so inherited metadata doesn't shadow actual model
 - [ ] Write README — "no single best model" as headline
 - [ ] Choose a project name (captures "rankings depend on your documents")
+- [ ] Deploy viewer as HF Space (the key demo artifact for sharing)
+- [ ] PyPI publishing workflow (GitHub Actions trusted publishing — almost ready)
+- [x] Switch default judge to Qwen3.5-35B-A3B (fastest, zero parse failures, same cluster rankings as 122B and 27B)
 
 ### Known limitation — row alignment across PRs
 `load_config_dataset()` merges configs by positional index — no alignment key. Safe if all model runs use the same `--seed`/`--max-samples` and the source dataset doesn't change. Future: add content hash column for validation.
 
 ### Phase 4: Blog + Visibility
 - [ ] "There Is No Best OCR Model" blog post
-- [ ] Deploy viewer as HF Space
 - [ ] Cross-link repo, viewer, Hub datasets, blog
 
 ### Phase 5: Customization
@@ -72,7 +78,7 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 - [ ] Custom prompt and ignore list support
 - [ ] Define leaderboard dataset schema
 - [x] Adaptive stopping (on by default, `--no-adaptive` to opt out): run batches, compute BT-MLE + CIs, stop when adjacent-rank CIs don't overlap (ranking is statistically resolved). Avoids wasting judge calls when rankings are already clear.
-- [x] Judge prompt: hallucination now penalized more than commentary. Blank page descriptions no longer lose to nonsense output.
+- [x] Judge prompt: hallucination penalized more than commentary. Markdown formatting neutral. Blank page descriptions no longer lose to nonsense output.
 - [ ] Judge comparison: run same dataset through different judges (e.g. Kimi K2.5 vs Qwen3.5-397B), compare BT-MLE ratings + CIs to see where judges agree/disagree. Overlapping CIs = single judge is fine; non-overlapping = jury mode adds value. Test on diverse document types — jury may only matter for ambiguous collections (e.g. index cards where everything ties).
 - [ ] `--focus-pairs` for human validation: prioritize showing pairs with overlapping CIs in the vote UI, since those are the only ones where human input changes the ranking.
 - [ ] Blank page filtering: skip comparisons where neither model produced meaningful text.
@@ -81,6 +87,7 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 - [ ] Consolidate OCR model scripts into this repo + hub-sync
 - [ ] CI/smoke tests
 - [x] Britannica E2E (50 samples, 4 models, 2 judges)
+- [x] Large-scale run: full BPL card catalog (453K images) with GLM-OCR — 21.9 hrs, $39 on L40S
 - [ ] Large-scale runs (full Britannica, NLS index cards)
 - [ ] CER/WER metrics alongside VLM judge
 - [ ] `bench` command: single `ocr-bench bench <input-dataset>` chains run → judge → view
@@ -93,9 +100,11 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 ## Technical Reference
 
 ### Judge Models
-- **Kimi K2.5 (`novita:moonshotai/Kimi-K2.5`)** — best human agreement, default. ~2-5% parse failures from degeneration even at 1024 max_tokens.
-- **Qwen3-VL-235B (`novita:Qwen/Qwen3-VL-235B-A22B-Instruct`)** — zero parse failures, agrees with Kimi on cluster rankings but swaps within close groups. Good alternative judge. ~6 comparisons/min.
-- **Qwen3.5-35B-A3B (HF Inference Endpoint, non-thinking mode)** — fast cheap judge. ~30 comparisons/min sequential, ~60/min with `--concurrency 4`. Same top-2/bottom-2 clusters as 235B on Britannica but swaps #1/#2. Good for quick iteration.
+- **Qwen3.5-35B-A3B (`novita:Qwen/Qwen3.5-35B-A3B`)** — **default**. Zero parse failures, ~21 comps/min via Inference Providers (HF token only). Same cluster rankings as 122B and 27B. Best speed/quality tradeoff.
+- **Qwen3.5-122B-A10B (`novita:Qwen/Qwen3.5-122B-A10B`)** — zero parse failures, ~19 comps/min. Slightly more separation between clusters. Good for authoritative runs.
+- **Qwen3.5-27B (`novita:Qwen/Qwen3.5-27B`)** — zero parse failures, ~12 comps/min. Dense model, slower than MoE alternatives. Same clusters.
+- **Kimi K2.5 (`novita:moonshotai/Kimi-K2.5`)** — best human agreement but 2-5% parse failures from degeneration. No longer default.
+- **Qwen3-VL-235B (`novita:Qwen/Qwen3-VL-235B-A22B-Instruct`)** — zero parse failures, ~6 comps/min. Good but slower and Novita disconnects on long runs.
 - **Qwen3-VL-30B-A3B (offline vLLM)** — best offline judge
 - **7B/8B** — biased toward verbose output, not recommended as primary
 
@@ -105,6 +114,7 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 | DeepSeek-OCR | 4B | Most consistent across datasets |
 | GLM-OCR | 0.9B | Card catalogs, Britannica (235B judge) |
 | LightOnOCR-2 | 1B | BPL manuscript cards, Britannica (35B judge) |
+| FireRed-OCR | 2.1B | Mid-pack on Britannica (#3), good on clean printed text, loses on degraded/stamps |
 | dots.ocr | 1.7B | Worst on Britannica (1-2% win rate) |
 
 ### Key Findings
@@ -117,20 +127,26 @@ FastAPI + HTMX, Tufte-inspired. Keyboard-first (`←`/`→` navigate, `a`/`b`/`t
 7. **Judges agree on clusters, swap within** — Kimi K2.5 and Qwen3-VL-235B produce same top-2/bottom-2 groupings on BPL but swap adjacent models. CIs overlap between judges, confirming fine ordering is noise. Same pattern on Britannica: 235B and 35B agree on clusters but swap #1/#2.
 8. **Jury mode works** — eliminates single-judge bias
 9. **dots.ocr struggles on historical printed text** — 1-2% win rate on Britannica vs 55% on BPL. Model-dataset fit matters enormously.
+10. **FireRed-OCR mid-pack on Britannica** — #3 (1551 ELO, 35B judge). Loses to GLM/LightOn on degraded text (garbling) and gets penalised for aggressive markdown formatting (`# headings`, `**bold**` on everything). Beats DeepSeek-OCR (52% vs 39% win rate).
+11. **Qwen3.5-35B-A3B is the best default judge** — assessed 35B-A3B, 27B, and 122B-A10B on identical 96-comparison Britannica benchmark. All three: zero parse failures, same cluster rankings (top-3: FireRed/LightOn/GLM, then DeepSeek, then dots). 35B-A3B fastest (4:35 vs 7:55 vs 4:57). Now the default.
 
 ### Results on Hub
 - `davanstrien/bpl-ocr-bench-results` — BPL card catalog, 4 models, Kimi K2.5 judge (2026-02-24)
-- `davanstrien/ocr-bench-britannica-results` — Britannica 1771, 4 models, Qwen3-VL-235B judge (2026-02-25)
-- `davanstrien/ocr-bench-britannica-results-qwen35` — Britannica 1771, 4 models, Qwen3.5-35B-A3B judge (2026-02-25)
+- `davanstrien/ocr-bench-britannica-results` — Britannica 1771, 5 models, Qwen3-VL-235B judge (2026-02-25, partial — Novita disconnects)
+- `davanstrien/ocr-bench-britannica-results-qwen35` — Britannica 1771, 5 models, Qwen3.5-35B-A3B judge (2026-03-02)
 - `davanstrien/ocr-bench-rubenstein-judge` — 50 samples, 300 comparisons
 - `davanstrien/ocr-bench-ufo-judge-30b` — cross-validation on UFO-ColPali
 - `davanstrien/ocr-bench-rubenstein-judge-kimi-k25` — Kimi K2.5 170B
+- `davanstrien/ocr-bench-judge-eval-35b` — judge assessment: Qwen3.5-35B-A3B, 96 comps, 10 samples
+- `davanstrien/ocr-bench-judge-eval-27b` — judge assessment: Qwen3.5-27B, 96 comps, 10 samples
+- `davanstrien/ocr-bench-judge-eval-122b` — judge assessment: Qwen3.5-122B-A10B, 96 comps, 10 samples
 
 ### OCR Output Datasets
 - `davanstrien/ocr-bench-rubenstein` — 4 models, PRs, 50 samples (index cards, all tie)
 - `davanstrien/ocr-bench-ufo` — 4 models, PRs, 50 samples (diverse docs, clear differentiation)
 - `davanstrien/bpl-ocr-bench` — 4 models, PRs, 150 samples (BPL card catalog)
-- `davanstrien/ocr-bench-britannica` — 4 models, 3 PRs + 1 merged, 50 samples (Encyclopaedia Britannica 1771)
+- `davanstrien/ocr-bench-britannica` — 5 models (incl. FireRed-OCR), 4 PRs + 1 merged, 50 samples (Encyclopaedia Britannica 1771)
+- `davanstrien/bpl-card-catalog-glm-ocr` — **full BPL run**, 453K cards, GLM-OCR, 21.9 hrs on L40S, $39 (2026-02-27)
 
 ## Connections
 

@@ -128,7 +128,7 @@ class OpenAICompatibleJudge(JudgeBackend):
 # Spec parsing
 # ---------------------------------------------------------------------------
 
-DEFAULT_JUDGE = "novita:moonshotai/Kimi-K2.5"
+DEFAULT_JUDGE = "novita:Qwen/Qwen3.5-35B-A3B"
 
 
 def parse_judge_spec(
