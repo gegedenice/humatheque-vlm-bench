@@ -122,6 +122,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--split", default="train", help="Dataset split (default: train)")
     run.add_argument("--flavor", default=None, help="Override GPU flavor for all models")
     run.add_argument("--timeout", default="4h", help="Per-job timeout (default: 4h)")
+    run.add_argument(
+        "--prompt",
+        default=None,
+        help="Optional custom prompt passed to inference scripts. Keep it short for HF Jobs.",
+    )
     run.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     run.add_argument("--shuffle", action="store_true", help="Shuffle source dataset")
     run.add_argument("--list-models", action="store_true", help="Print available models and exit")
@@ -541,6 +546,10 @@ def cmd_run(args: argparse.Namespace) -> None:
     console.print(f"  Models:  {', '.join(selected)}")
     if args.max_samples:
         console.print(f"  Samples: {args.max_samples} per model")
+    if args.prompt:
+        console.print("  Prompt:  custom (--prompt)")
+    else:
+        console.print("  Prompt:  script default (no --prompt passed)")
     console.print()
 
     # Dry run
@@ -557,6 +566,7 @@ def cmd_run(args: argparse.Namespace) -> None:
                 shuffle=args.shuffle,
                 seed=args.seed,
                 extra_args=cfg.default_args or None,
+                prompt=args.prompt,
             )
             console.print(f"[cyan]{slug}[/cyan] ({cfg.model_id})")
             console.print(f"  Flavor:  {flavor}")
@@ -576,6 +586,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         split=args.split,
         shuffle=args.shuffle,
         seed=args.seed,
+        prompt=args.prompt,
         flavor_override=args.flavor,
         timeout=args.timeout,
     )

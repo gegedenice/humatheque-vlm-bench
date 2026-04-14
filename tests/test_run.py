@@ -70,8 +70,19 @@ class TestBuildScriptArgs:
         assert args[:5] == ["input/ds", "output/repo", "--config", "glm-ocr", "--create-pr"]
         assert "--image-column" in args
         assert "image_uri" in args
+        assert "--prompt" not in args
+
+    def test_custom_prompt(self):
+        args = build_script_args("in", "out", "x", prompt="extract title")
         assert "--prompt" in args
-        assert "Extract the document title from this cover page." in args[args.index("--prompt") + 1]
+        assert args[args.index("--prompt") + 1] == "extract title"
+
+    def test_prompt_too_long_raises(self):
+        try:
+            build_script_args("in", "out", "x", prompt="x" * 300)
+            assert False, "Should have raised"
+        except ValueError as e:
+            assert "too long" in str(e).lower()
 
     def test_max_samples(self):
         args = build_script_args("in", "out", "x", max_samples=50)
@@ -232,6 +243,14 @@ class TestCLIParser:
         assert args.input_dataset == "input/ds"
         assert args.output_repo == "output/repo"
         assert args.max_samples == 50
+        assert args.prompt is None
+
+    def test_run_prompt_flag(self):
+        from ocr_bench.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["run", "in", "out", "--prompt", "extract title"])
+        assert args.prompt == "extract title"
 
     def test_run_list_models(self):
         from ocr_bench.cli import build_parser
