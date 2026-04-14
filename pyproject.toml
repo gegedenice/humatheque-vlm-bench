@@ -1,7 +1,7 @@
 [project]
-name = "ocr-bench"
+name = "humatheque-vlm-bench"
 version = "0.0.3"
-description = "OCR model evaluation toolkit — VLM-as-judge with per-dataset leaderboards"
+description = "Humathèque VLM metadata extraction benchmark toolkit"
 readme = "README.md"
 authors = [
     { name = "Daniel van Strien", email = "davanstrien@gmail.com" }
@@ -14,6 +14,7 @@ dependencies = [
     "numpy",
     "openai",
     "pillow",
+    "rapidfuzz",
     "rich",
     "scipy",
     "stamina",
@@ -27,6 +28,7 @@ Repository = "https://github.com/davanstrien/ocr-bench"
 Demo = "https://huggingface.co/spaces/davanstrien/ocr-bench-britannica-results-qwen35-viewer"
 
 [project.scripts]
+humatheque-vlm-bench = "ocr_bench.cli:main"
 ocr-bench = "ocr_bench.cli:main"
 
 [project.optional-dependencies]

@@ -1,4 +1,4 @@
-"""OCR model orchestration — launch HF Jobs for multiple OCR models."""
+"""VLM model orchestration — launch HF Jobs for metadata extraction models."""
 
 from __future__ import annotations
 
@@ -7,6 +7,12 @@ from dataclasses import dataclass, field
 
 import structlog
 from huggingface_hub import HfApi, get_token
+
+from ocr_bench.task_config import (
+    DEFAULT_IMAGE_COLUMN,
+    DEFAULT_SOURCE_DATASET,
+    build_default_task_prompt,
+)
 
 logger = structlog.get_logger()
 
@@ -23,52 +29,28 @@ class ModelConfig:
 
 
 MODEL_REGISTRY: dict[str, ModelConfig] = {
-    "glm-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/glm-ocr.py",
-        model_id="zai-org/GLM-OCR",
-        size="0.9B",
-        default_flavor="l4x1",
-    ),
-    "deepseek-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/deepseek-ocr-vllm.py",
-        model_id="deepseek-ai/DeepSeek-OCR",
+    "qwen3-vl-4b-instruct": ModelConfig(
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/vlm-metadata-extraction.py",
+        model_id="Qwen/Qwen3-VL-4B-Instruct",
         size="4B",
         default_flavor="l4x1",
-        default_args=["--prompt-mode", "free"],
     ),
-    "lighton-ocr-2": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/lighton-ocr2.py",
-        model_id="lightonai/LightOnOCR-2-1B",
-        size="1B",
-        default_flavor="a100-large",
-    ),
-    "dots-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/dots-ocr.py",
-        model_id="rednote-hilab/dots.ocr",
-        size="1.7B",
-        default_flavor="l4x1",
-    ),
-    "firered-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/firered-ocr.py",
-        model_id="FireRedTeam/FireRed-OCR",
-        size="2.1B",
-        default_flavor="l4x1",
-    ),
-    "qianfan-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/qianfan-ocr.py",
-        model_id="baidu/Qianfan-OCR",
-        size="4.7B",
-        default_flavor="l4x1",
-    ),
-    "dots-mocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/dots-mocr.py",
-        model_id="rednote-hilab/dots.mocr",
+    "nanonets-ocr2-3b": ModelConfig(
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/vlm-metadata-extraction.py",
+        model_id="nanonets/Nanonets-OCR2-3B",
         size="3B",
+        default_flavor="l4x1",
+    ),
+    "gemma-4-e4b-it": ModelConfig(
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/vlm-metadata-extraction.py",
+        model_id="google/gemma-4-E4B-it",
+        size="4B",
         default_flavor="l4x1",
     ),
 }
 
-DEFAULT_MODELS = ["glm-ocr", "deepseek-ocr", "lighton-ocr-2", "dots-ocr", "firered-ocr"]
+DEFAULT_MODELS = ["qwen3-vl-4b-instruct", "nanonets-ocr2-3b", "gemma-4-e4b-it"]
+DEFAULT_TASK_PROMPT = build_default_task_prompt()
 
 
 @dataclass
@@ -95,6 +77,7 @@ def build_script_args(
     shuffle: bool = False,
     seed: int = 42,
     extra_args: list[str] | None = None,
+    prompt: str | None = None,
 ) -> list[str]:
     """Build the script_args list for run_uv_job."""
     args = [
@@ -103,7 +86,16 @@ def build_script_args(
         "--config",
         config_name,
         "--create-pr",
+        "--image-column",
+        DEFAULT_IMAGE_COLUMN,
     ]
+    if prompt:
+        if len(prompt) > 240:
+            raise ValueError(
+                "Prompt is too long for HF Jobs `run_uv_job` argument handling. "
+                "Use a shorter prompt string (<=240 chars) or rely on script defaults."
+            )
+        args += ["--prompt", prompt]
     if max_samples is not None:
         args += ["--max-samples", str(max_samples)]
     if shuffle:
@@ -124,6 +116,7 @@ def launch_ocr_jobs(
     split: str = "train",
     shuffle: bool = False,
     seed: int = 42,
+    prompt: str | None = None,
     flavor_override: str | None = None,
     timeout: str = "4h",
     api: HfApi | None = None,
@@ -155,6 +148,7 @@ def launch_ocr_jobs(
             shuffle=shuffle,
             seed=seed,
             extra_args=config.default_args or None,
+            prompt=prompt,
         )
 
         logger.info("launching_job", model=slug, flavor=flavor, script=config.script)
