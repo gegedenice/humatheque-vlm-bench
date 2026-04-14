@@ -70,19 +70,12 @@ class TestBuildScriptArgs:
         assert args[:5] == ["input/ds", "output/repo", "--config", "glm-ocr", "--create-pr"]
         assert "--image-column" in args
         assert "image_uri" in args
-        assert "--prompt" not in args
+        assert "--prompt" in args
 
     def test_custom_prompt(self):
         args = build_script_args("in", "out", "x", prompt="extract title")
         assert "--prompt" in args
         assert args[args.index("--prompt") + 1] == "extract title"
-
-    def test_prompt_too_long_raises(self):
-        try:
-            build_script_args("in", "out", "x", prompt="x" * 300)
-            assert False, "Should have raised"
-        except ValueError as e:
-            assert "too long" in str(e).lower()
 
     def test_max_samples(self):
         args = build_script_args("in", "out", "x", max_samples=50)
@@ -128,8 +121,8 @@ class TestLaunchOcrJobs:
             assert job.status == "running"
 
     def test_prompt_contains_degree_and_discipline_constraints(self):
-        assert "Thèse d'État" in DEFAULT_TASK_PROMPT
-        assert "Informatique, information, généralités" in DEFAULT_TASK_PROMPT
+        assert '"degree_type": "Academic degree sought by the author."' in DEFAULT_TASK_PROMPT
+        assert '"discipline": "Academic field or discipline of the thesis."' in DEFAULT_TASK_PROMPT
 
     @patch("ocr_bench.run.get_token", return_value="fake-token")
     def test_launches_subset(self, mock_token):

@@ -77,7 +77,7 @@ def build_script_args(
     shuffle: bool = False,
     seed: int = 42,
     extra_args: list[str] | None = None,
-    prompt: str | None = None,
+    prompt: str | None = DEFAULT_TASK_PROMPT,
 ) -> list[str]:
     """Build the script_args list for run_uv_job."""
     args = [
@@ -89,12 +89,7 @@ def build_script_args(
         "--image-column",
         DEFAULT_IMAGE_COLUMN,
     ]
-    if prompt:
-        if len(prompt) > 240:
-            raise ValueError(
-                "Prompt is too long for HF Jobs `run_uv_job` argument handling. "
-                "Use a shorter prompt string (<=240 chars) or rely on script defaults."
-            )
+    if prompt is not None:
         args += ["--prompt", prompt]
     if max_samples is not None:
         args += ["--max-samples", str(max_samples)]
@@ -116,7 +111,7 @@ def launch_ocr_jobs(
     split: str = "train",
     shuffle: bool = False,
     seed: int = 42,
-    prompt: str | None = None,
+    prompt: str | None = DEFAULT_TASK_PROMPT,
     flavor_override: str | None = None,
     timeout: str = "4h",
     api: HfApi | None = None,

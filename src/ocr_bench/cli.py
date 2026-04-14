@@ -510,6 +510,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     """Launch OCR models on a dataset via HF Jobs."""
     from ocr_bench.run import (
         DEFAULT_MODELS,
+        DEFAULT_TASK_PROMPT,
         MODEL_REGISTRY,
         build_script_args,
         launch_ocr_jobs,
@@ -546,10 +547,10 @@ def cmd_run(args: argparse.Namespace) -> None:
     console.print(f"  Models:  {', '.join(selected)}")
     if args.max_samples:
         console.print(f"  Samples: {args.max_samples} per model")
-    if args.prompt:
+    if args.prompt is not None:
         console.print("  Prompt:  custom (--prompt)")
     else:
-        console.print("  Prompt:  script default (no --prompt passed)")
+        console.print("  Prompt:  default task prompt")
     console.print()
 
     # Dry run
@@ -566,7 +567,7 @@ def cmd_run(args: argparse.Namespace) -> None:
                 shuffle=args.shuffle,
                 seed=args.seed,
                 extra_args=cfg.default_args or None,
-                prompt=args.prompt,
+                prompt=selected_prompt,
             )
             console.print(f"[cyan]{slug}[/cyan] ({cfg.model_id})")
             console.print(f"  Flavor:  {flavor}")
@@ -586,7 +587,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         split=args.split,
         shuffle=args.shuffle,
         seed=args.seed,
-        prompt=args.prompt,
+        prompt=selected_prompt,
         flavor_override=args.flavor,
         timeout=args.timeout,
     )
@@ -687,3 +688,4 @@ def main() -> None:
     except DatasetError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
+    selected_prompt = args.prompt if args.prompt is not None else DEFAULT_TASK_PROMPT

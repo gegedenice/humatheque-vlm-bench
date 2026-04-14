@@ -63,9 +63,7 @@ humatheque-vlm-bench run in out --list-models
 humatheque-vlm-bench run in out --models qwen3-vl-4b-instruct gemma-4-e4b-it
 humatheque-vlm-bench run in out --prompt "Extract thesis metadata as JSON"
 ```
-
-> Note: to avoid a Hugging Face `run_uv_job` long-argument limitation, `humatheque-vlm-bench run` does **not** pass the long default schema prompt by default.  
-> Inference scripts should use their own task default prompt, or you can pass a short custom prompt with `--prompt`.
+By default, the command injects the task metadata prompt. Use `--prompt` if you want to override it.
 
 ### 2) Run evaluation and ranking
 
