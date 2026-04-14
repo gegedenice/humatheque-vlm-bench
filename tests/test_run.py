@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from ocr_bench.run import (
+    DEFAULT_TASK_PROMPT,
     DEFAULT_MODELS,
     MODEL_REGISTRY,
     JobRun,
@@ -70,6 +71,7 @@ class TestBuildScriptArgs:
         assert "--image-column" in args
         assert "image_uri" in args
         assert "--prompt" in args
+        assert "Extract the document title from this cover page." in args[args.index("--prompt") + 1]
 
     def test_max_samples(self):
         args = build_script_args("in", "out", "x", max_samples=50)
@@ -108,11 +110,15 @@ class TestLaunchOcrJobs:
 
         jobs = launch_ocr_jobs("input/ds", "output/repo", api=mock_api)
 
-        assert len(jobs) == 5
-        assert mock_api.run_uv_job.call_count == 5
+        assert len(jobs) == 3
+        assert mock_api.run_uv_job.call_count == 3
         for job in jobs:
             assert isinstance(job, JobRun)
             assert job.status == "running"
+
+    def test_prompt_contains_degree_and_discipline_constraints(self):
+        assert "Thèse d'État" in DEFAULT_TASK_PROMPT
+        assert "Informatique, information, généralités" in DEFAULT_TASK_PROMPT
 
     @patch("ocr_bench.run.get_token", return_value="fake-token")
     def test_launches_subset(self, mock_token):

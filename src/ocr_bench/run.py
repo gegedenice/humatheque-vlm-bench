@@ -8,6 +8,12 @@ from dataclasses import dataclass, field
 import structlog
 from huggingface_hub import HfApi, get_token
 
+from ocr_bench.task_config import (
+    DEFAULT_IMAGE_COLUMN,
+    DEFAULT_SOURCE_DATASET,
+    build_default_task_prompt,
+)
+
 logger = structlog.get_logger()
 
 
@@ -44,28 +50,7 @@ MODEL_REGISTRY: dict[str, ModelConfig] = {
 }
 
 DEFAULT_MODELS = ["qwen3-vl-4b-instruct", "nanonets-ocr2-3b", "gemma-4-e4b-it"]
-DEFAULT_SOURCE_DATASET = "Geraldine/humatheque-vlm-sudoc-grounded"
-
-THESIS_DEGREE_TYPE_VALUES = "<TODO_FILL_DEGREE_VALUES>"
-OAI_DISCIPLINE_VALUES = "<TODO_FILL_DISCIPLINE_VALUES>"
-DEFAULT_TASK_PROMPT = f"""Extract the document title from this cover page.
-Output ONLY valid JSON:
-{{
-  "title": "Main title of the thesis as it appears on the title page",
-  "subtitle": "Subtitle or remainder of the title, usually following a colon; null if not present",
-  "author": "Full name of the author (student) who wrote the thesis",
-  "degree_type": "Academic degree sought by the author. Possible values are {THESIS_DEGREE_TYPE_VALUES}",
-  "discipline": "Academic field or discipline of the thesis. Possible values are {OAI_DISCIPLINE_VALUES}",
-  "granting_institution": "Institution where the thesis was submitted and the degree is granted",
-  "doctoral_school": "Doctoral school or graduate program, if explicitly mentioned",
-  "defense_year": "Year the thesis was defended. Format yyyy",
-  "thesis_advisor": "Main thesis advisor or supervisor",
-  "jury_president": "President or chair of the thesis examination committee",
-  "reviewers": "Reviewers or rapporteurs of the thesis. Use | as separator",
-  "committee_members": "Other thesis committee or jury members. Use | as separator",
-  "language": "Language in ISO 639-3 codes. Example: fre, eng, ita..."
-}}
-"""
+DEFAULT_TASK_PROMPT = build_default_task_prompt()
 
 
 @dataclass
@@ -101,7 +86,7 @@ def build_script_args(
         config_name,
         "--create-pr",
         "--image-column",
-        "image_uri",
+        DEFAULT_IMAGE_COLUMN,
         "--prompt",
         DEFAULT_TASK_PROMPT,
     ]

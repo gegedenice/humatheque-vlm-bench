@@ -31,6 +31,7 @@ from ocr_bench.publish import (
     publish_results,
 )
 from ocr_bench.standard_eval import evaluate_against_ground_truth
+from ocr_bench.task_config import DEFAULT_GROUND_TRUTH_COLUMN
 
 logger = structlog.get_logger()
 console = Console()
@@ -50,8 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     judge.add_argument("--split", default="train", help="Dataset split (default: train)")
     judge.add_argument(
         "--ground-truth-column",
-        default="sudoc_record_templated",
-        help="Ground truth column for standard metrics (default: sudoc_record_templated)",
+        default=DEFAULT_GROUND_TRUTH_COLUMN,
+        help=f"Ground truth column for standard metrics (default: {DEFAULT_GROUND_TRUTH_COLUMN})",
     )
     judge.add_argument("--columns", nargs="+", default=None, help="Explicit OCR column names")
     judge.add_argument(
@@ -299,14 +300,14 @@ def cmd_judge(args: argparse.Namespace) -> None:
         metrics_table = Table(title="Standard Evaluation (Dummy Scaffold)")
         metrics_table.add_column("Model")
         metrics_table.add_column("Samples", justify="right")
-        metrics_table.add_column("Exact match", justify="right")
-        metrics_table.add_column("Normalized overlap", justify="right")
+        metrics_table.add_column("Global F1", justify="right")
+        metrics_table.add_column("Jury global F1", justify="right")
         for metric in standard_metrics:
             metrics_table.add_row(
                 metric.model,
                 str(metric.samples),
-                f"{metric.exact_match:.3f}",
-                f"{metric.normalized_overlap:.3f}",
+                f"{metric.global_f1:.3f}",
+                f"{metric.jury_global_f1:.3f}",
             )
         console.print()
         console.print(metrics_table)
