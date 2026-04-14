@@ -1,6 +1,6 @@
-# ocr-bench
+# humatheque-vlm-bench
 
-`ocr-bench` is a Hugging Face Hub-native benchmark toolkit for **vision-language metadata extraction** and **pairwise LLM-as-a-judge ranking**.
+`humatheque-vlm-bench` is a Hugging Face Hub-native benchmark toolkit for **vision-language metadata extraction** and **pairwise LLM-as-a-judge ranking**.
 
 This repository is currently configured for the Humathèque thesis-cover task:
 
@@ -35,7 +35,9 @@ Compared to the original OCR-centric flow, this configuration adds:
 ## Install
 
 ```bash
-uv pip install ocr-bench[viewer]
+git clone https://github.com/<your-org>/humatheque-vlm-bench.git
+cd humatheque-vlm-bench
+uv pip install -e .[viewer]
 ```
 
 Requires:
@@ -50,25 +52,25 @@ Requires:
 ### 1) Run model inference jobs on HF Jobs
 
 ```bash
-ocr-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> --max-samples 50
+humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> --max-samples 50
 ```
 
 By default, this launches the three configured VLMs.  
 You can list or override models:
 
 ```bash
-ocr-bench run in out --list-models
-ocr-bench run in out --models qwen3-vl-4b-instruct gemma-4-e4b-it
-ocr-bench run in out --prompt "Extract thesis metadata as JSON"
+humatheque-vlm-bench run in out --list-models
+humatheque-vlm-bench run in out --models qwen3-vl-4b-instruct gemma-4-e4b-it
+humatheque-vlm-bench run in out --prompt "Extract thesis metadata as JSON"
 ```
 
-> Note: to avoid a Hugging Face `run_uv_job` long-argument limitation, `ocr-bench run` does **not** pass the long default schema prompt by default.  
+> Note: to avoid a Hugging Face `run_uv_job` long-argument limitation, `humatheque-vlm-bench run` does **not** pass the long default schema prompt by default.  
 > Inference scripts should use their own task default prompt, or you can pass a short custom prompt with `--prompt`.
 
 ### 2) Run evaluation and ranking
 
 ```bash
-ocr-bench judge <your-output-dataset> --ground-truth-column sudoc_record_templated
+humatheque-vlm-bench judge <your-output-dataset> --ground-truth-column sudoc_record_templated
 ```
 
 `judge` now does **both**:
@@ -79,7 +81,7 @@ ocr-bench judge <your-output-dataset> --ground-truth-column sudoc_record_templat
 You can choose a different judge model or jury:
 
 ```bash
-ocr-bench judge <your-output-dataset> \
+humatheque-vlm-bench judge <your-output-dataset> \
   --model novita:Qwen/Qwen3.5-35B-A3B \
   --model together:meta-llama/Llama-3.3-70B-Instruct-Turbo
 ```
@@ -87,13 +89,13 @@ ocr-bench judge <your-output-dataset> \
 ### 3) Browse results locally
 
 ```bash
-ocr-bench view <your-output-dataset>-results
+humatheque-vlm-bench view <your-output-dataset>-results
 ```
 
 ### 4) (Optional) Publish viewer as a Space
 
 ```bash
-ocr-bench publish <your-output-dataset>-results
+humatheque-vlm-bench publish <your-output-dataset>-results
 ```
 
 ---
@@ -118,16 +120,16 @@ This gives a reproducible, reference-based signal that complements LLM-as-a-judg
 
 ```bash
 # Dry run jobs
-ocr-bench run Geraldine/humatheque-vlm-sudoc-grounded out --dry-run
+humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded out --dry-run
 
 # Evaluate only a subset of rows
-ocr-bench judge out --max-samples 25
+humatheque-vlm-bench judge out --max-samples 25
 
 # Disable adaptive pairwise stopping
-ocr-bench judge out --no-adaptive
+humatheque-vlm-bench judge out --no-adaptive
 
 # Re-judge from scratch
-ocr-bench judge out --full-rejudge
+humatheque-vlm-bench judge out --full-rejudge
 ```
 
 ---

@@ -39,8 +39,8 @@ console = Console()
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ocr-bench",
-        description="OCR model evaluation toolkit — VLM-as-judge with per-dataset leaderboards",
+        prog="humatheque-vlm-bench",
+        description="Humathèque VLM metadata extraction benchmark toolkit",
     )
     sub = parser.add_subparsers(dest="command")
 
