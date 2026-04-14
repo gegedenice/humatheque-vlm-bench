@@ -70,7 +70,7 @@ class TestBuildScriptArgs:
         assert args[:5] == ["input/ds", "output/repo", "--config", "glm-ocr", "--create-pr"]
         assert "--image-column" in args
         assert "image_uri" in args
-        assert "--prompt" in args
+        assert "--prompt" not in args
 
     def test_custom_prompt(self):
         args = build_script_args("in", "out", "x", prompt="extract title")

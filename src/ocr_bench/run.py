@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 
 import structlog
@@ -30,19 +32,19 @@ class ModelConfig:
 
 MODEL_REGISTRY: dict[str, ModelConfig] = {
     "qwen3-vl-4b-instruct": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/vlm-metadata-extraction.py",
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/firered-ocr.py",
         model_id="Qwen/Qwen3-VL-4B-Instruct",
         size="4B",
         default_flavor="l4x1",
     ),
     "nanonets-ocr2-3b": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/vlm-metadata-extraction.py",
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/nanonets-ocr2.py",
         model_id="nanonets/Nanonets-OCR2-3B",
         size="3B",
         default_flavor="l4x1",
     ),
     "gemma-4-e4b-it": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/vlm-metadata-extraction.py",
+        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/paddleocr-vl.py",
         model_id="google/gemma-4-E4B-it",
         size="4B",
         default_flavor="l4x1",
@@ -77,7 +79,7 @@ def build_script_args(
     shuffle: bool = False,
     seed: int = 42,
     extra_args: list[str] | None = None,
-    prompt: str | None = DEFAULT_TASK_PROMPT,
+    prompt: str | None = None,
 ) -> list[str]:
     """Build the script_args list for run_uv_job."""
     args = [
@@ -111,7 +113,7 @@ def launch_ocr_jobs(
     split: str = "train",
     shuffle: bool = False,
     seed: int = 42,
-    prompt: str | None = DEFAULT_TASK_PROMPT,
+    prompt: str | None = None,
     flavor_override: str | None = None,
     timeout: str = "4h",
     api: HfApi | None = None,
@@ -132,8 +134,12 @@ def launch_ocr_jobs(
             )
 
     jobs: list[JobRun] = []
+    validated_scripts: set[str] = set()
     for slug in selected:
         config = MODEL_REGISTRY[slug]
+        if config.script not in validated_scripts:
+            _validate_remote_script(config.script)
+            validated_scripts.add(config.script)
         flavor = flavor_override or config.default_flavor
         script_args = build_script_args(
             input_dataset,
@@ -158,6 +164,21 @@ def launch_ocr_jobs(
         logger.info("job_launched", model=slug, job_id=job.id, url=job.url)
 
     return jobs
+
+
+def _validate_remote_script(script_url: str) -> None:
+    """Validate that a remote HF script URL resolves to a Python file, not an error page."""
+    try:
+        with urllib.request.urlopen(script_url, timeout=15) as response:
+            header = response.read(256).decode("utf-8", errors="ignore").strip()
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not access script URL: {script_url}") from exc
+
+    if "Entry not found" in header:
+        raise RuntimeError(
+            f"Script URL points to a missing file: {script_url}. "
+            "Please update MODEL_REGISTRY to a valid uv-scripts/ocr raw path."
+        )
 
 
 _TERMINAL_STAGES = frozenset({"COMPLETED", "ERROR", "CANCELED", "DELETED"})

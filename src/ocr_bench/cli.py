@@ -516,6 +516,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         launch_ocr_jobs,
         poll_jobs,
     )
+    selected_prompt = args.prompt
 
     # --list-models
     if args.list_models:
@@ -550,7 +551,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.prompt is not None:
         console.print("  Prompt:  custom (--prompt)")
     else:
-        console.print("  Prompt:  default task prompt")
+        console.print("  Prompt:  script default (no --prompt passed)")
     console.print()
 
     # Dry run

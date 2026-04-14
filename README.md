@@ -40,6 +40,12 @@ cd humatheque-vlm-bench
 uv pip install -e .[viewer]
 ```
 
+If `humatheque-vlm-bench` is still "command not found", refresh the editable install:
+
+```bash
+uv pip install -e .
+```
+
 Requires:
 
 - Python >= 3.11
@@ -63,7 +69,7 @@ humatheque-vlm-bench run in out --list-models
 humatheque-vlm-bench run in out --models qwen3-vl-4b-instruct gemma-4-e4b-it
 humatheque-vlm-bench run in out --prompt "Extract thesis metadata as JSON"
 ```
-By default, the command injects the task metadata prompt. Use `--prompt` if you want to override it.
+By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
 
 ### 2) Run evaluation and ranking
 
