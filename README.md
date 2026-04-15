@@ -2,6 +2,8 @@
 
 `humatheque-vlm-bench` is a Hugging Face Hub-native benchmark toolkit for **vision-language metadata extraction** and **pairwise LLM-as-a-judge ranking**.
 
+This project is a Humathèque-focused fork of the original `ocr-bench` by Daniel van Strien.
+
 This repository is currently configured for the Humathèque thesis-cover task:
 
 - **Dataset**: `Geraldine/humatheque-vlm-sudoc-grounded`
@@ -60,6 +62,7 @@ Requires:
 ```bash
 humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> --max-samples 50
 ```
+By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
 
 By default, this launches the three configured VLMs.  
 You can list or override models:

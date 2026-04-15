@@ -4,6 +4,7 @@ version = "0.0.3"
 description = "Humathèque VLM metadata extraction benchmark toolkit"
 readme = "README.md"
 authors = [
+    { name = "Géraldine Geoffroy", email = "grldn.geoffroy@gmail.com" },
     { name = "Daniel van Strien", email = "davanstrien@gmail.com" }
 ]
 requires-python = ">=3.11"
@@ -23,12 +24,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/davanstrien/ocr-bench"
-Repository = "https://github.com/davanstrien/ocr-bench"
-Demo = "https://huggingface.co/spaces/davanstrien/ocr-bench-britannica-results-qwen35-viewer"
+Homepage = "https://github.com/gegedenice/humatheque-vlm-bench"
+Repository = "https://github.com/gegedenice/humatheque-vlm-bench"
+Original-Project = "https://github.com/davanstrien/ocr-bench"
 
 [project.scripts]
-humatheque-vlm-bench = "ocr_bench.cli:main"
+humatheque-vlm-bench = "humatheque_vlm_bench.cli:main"
 ocr-bench = "ocr_bench.cli:main"
 
 [project.optional-dependencies]
