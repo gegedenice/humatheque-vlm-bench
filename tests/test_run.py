@@ -67,7 +67,9 @@ class TestListModels:
 class TestBuildScriptArgs:
     def test_basic_args(self):
         args = build_script_args("input/ds", "output/repo", "glm-ocr")
-        assert args[:5] == ["input/ds", "output/repo", "--config", "glm-ocr", "--create-pr"]
+        assert args[:4] == ["input/ds", "output/repo", "--image-column", "image_uri"]
+        assert "--output-column" in args
+        assert args[args.index("--output-column") + 1] == "glm-ocr"
         assert "--image-column" in args
         assert "image_uri" in args
         assert "--prompt" not in args

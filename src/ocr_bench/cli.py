@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("input_dataset", help="HF dataset repo id with images")
     run.add_argument("output_repo", help="Output dataset repo (all models push here)")
     run.add_argument(
-        "--models", nargs="+", default=None, help="Model slugs to run (default: all 4 core)"
+        "--models", nargs="+", default=None, help="Model slugs to run (default: all 3 defaults)"
     )
     run.add_argument("--max-samples", type=int, default=None, help="Per-model sample limit")
     run.add_argument("--split", default="train", help="Dataset split (default: train)")

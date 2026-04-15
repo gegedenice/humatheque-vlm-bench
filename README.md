@@ -64,14 +64,31 @@ humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-da
 ```
 By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
 
-By default, this launches the three configured VLMs.  
-You can list or override models:
+By default, this launches **3 jobs** (one per default model):  
+`qwen3-vl-4b-instruct`, `nanonets-ocr2-3b`, `gemma-4-e4b-it`.
+
+Use `--models` when you want only one model (= one job):
+
+```bash
+humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> \
+  --models gemma-4-e4b-it --max-samples 50
+```
+
+You can list available model slugs:
 
 ```bash
 humatheque-vlm-bench run in out --list-models
-humatheque-vlm-bench run in out --models qwen3-vl-4b-instruct gemma-4-e4b-it
-humatheque-vlm-bench run in out --prompt "Extract thesis metadata as JSON"
 ```
+
+Run command patterns:
+
+- **All defaults** (3 jobs):  
+  `humatheque-vlm-bench run <input-dataset> <output-dataset> --max-samples 50`
+- **One model** (1 job):  
+  `humatheque-vlm-bench run <input-dataset> <output-dataset> --models gemma-4-e4b-it --max-samples 50`
+- **Custom prompt** (optional):  
+  `humatheque-vlm-bench run <input-dataset> <output-dataset> --models gemma-4-e4b-it --prompt "Extract thesis metadata as JSON"`
+
 By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
 
 ### 2) Run evaluation and ranking

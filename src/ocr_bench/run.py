@@ -81,15 +81,18 @@ def build_script_args(
     extra_args: list[str] | None = None,
     prompt: str | None = None,
 ) -> list[str]:
-    """Build the script_args list for run_uv_job."""
+    """Build script arguments for uv-scripts/ocr inference jobs.
+
+    These scripts expect positional ``input_dataset output_dataset`` plus flags
+    such as ``--output-column`` (not ``--config`` / ``--create-pr``).
+    """
     args = [
         input_dataset,
         output_repo,
-        "--config",
-        config_name,
-        "--create-pr",
         "--image-column",
         DEFAULT_IMAGE_COLUMN,
+        "--output-column",
+        config_name,
     ]
     if prompt is not None:
         args += ["--prompt", prompt]
