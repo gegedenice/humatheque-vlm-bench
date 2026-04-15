@@ -62,6 +62,7 @@ Requires:
 ```bash
 humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> --max-samples 50
 ```
+By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
 
 By default, this launches **3 jobs** (one per default model):  
 `qwen3-vl-4b-instruct`, `nanonets-ocr2-3b`, `gemma-4-e4b-it`.
