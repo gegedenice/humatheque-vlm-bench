@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 DEFAULT_SOURCE_DATASET = "Geraldine/humatheque-vlm-sudoc-grounded"
 DEFAULT_GROUND_TRUTH_COLUMN = "sudoc_record_templated"
 DEFAULT_IMAGE_COLUMN = "image_uri"
@@ -125,7 +127,7 @@ Output ONLY valid JSON:
   "title": "Main title of the thesis as it appears on the title page",
   "subtitle": "Subtitle or remainder of the title, usually following a colon; null if not present",
   "author": "Full name of the author (student) who wrote the thesis",
-  "degree_type": "Academic degree sought by the author.",
+  "degree_type": "Academic degree sought by the author. Possible values are {json.dumps(THESIS_DEGREE_TYPE_VALUES, ensure_ascii=False)}",
   "discipline": "Academic field or discipline of the thesis.",
   "granting_institution": "Institution where the thesis was submitted and the degree is granted",
   "doctoral_school": "Doctoral school or graduate program, if explicitly mentioned",
