@@ -62,6 +62,7 @@ Requires:
 ```bash
 humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> --max-samples 50
 ```
+By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
 
 By default, this launches the three configured VLMs.  
 You can list or override models:
