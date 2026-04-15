@@ -1,3 +1,3 @@
-"""OCR model evaluation toolkit — VLM-as-judge with per-dataset leaderboards."""
+"""Humathèque VLM metadata extraction benchmark toolkit."""
 
 __version__ = "0.1.0"
