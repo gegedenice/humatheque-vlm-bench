@@ -1,111 +1,146 @@
-# ocr-bench
+# humatheque-vlm-bench
 
-**There is currently no single best OCR model.** Rankings change depending on your documents. Manuscript cards, printed books, historical texts all produce different winners.
+`humatheque-vlm-bench` is a Hugging Face Hub-native benchmark toolkit for **vision-language metadata extraction** and **pairwise LLM-as-a-judge ranking**.
 
-`ocr-bench` allows you to create **per-collection leaderboards** using a VLM-as-judge approach, so you can find what works best for _your_ documents rather than relying on generic benchmarks. You can validate the VLM's judgement with human votes, and share results via the Hugging Face Hub.
+This project is a Humathèque-focused fork of the original `ocr-bench` by Daniel van Strien.
 
-The underlying OCR model inference uv scripts are available at [uv-scripts/ocr](https://huggingface.co/datasets/uv-scripts/ocr). The majority of these use vLLM for efficient GPU inference, and are designed to run on a single consumer GPU (e.g. 24GB 3090/4090). The `ocr-bench` package orchestrates running these models at scale on the Hub, and judging outputs with a VLM. If you just want to run some OCR models on your data without the judging/leaderboard aspect, you can run the scripts directly.
+This repository is currently configured for the Humathèque thesis-cover task:
 
-## Why?
+- **Dataset**: `Geraldine/humatheque-vlm-sudoc-grounded`
+- **Input image column**: `image_uri`
+- **Ground truth JSON column**: `sudoc_record_templated`
+- **Default extraction models**:
+  - `Qwen/Qwen3-VL-4B-Instruct`
+  - `nanonets/Nanonets-OCR2-3B`
+  - `google/gemma-4-E4B-it`
 
-Generic OCR benchmarks tell you which model wins _on average_. But if you're digitising 18th-century encyclopaedias, that average doesn't help — the best model for your documents might be the worst on someone else's. Inspired by [Datalab's Benchmarks + Evals](https://www.datalab.to/blog/datalab-benchmarks-evals) approach — pairwise VLM-as-judge with Bradley-Terry scoring on your own documents — ocr-bench brings this idea to the Hugging Face Hub as an open-source, self-serve tool.
+---
 
-ocr-bench lets you run the same set of OCR models on a sample of _your_ collection, then uses a vision-language model to judge which produces the best transcription for each document. The result is a leaderboard specific to your data.
+## What’s new in this setup
 
-| Model              | BPL card catalog | Britannica 1771 |
-| ------------------ | :--------------: | :-------------: |
-| GLM-OCR (0.9B)     |    #2 (1535)     |  **#1** (1787)  |
-| LightOnOCR-2 (1B)  |  **#1** (1559)   |    #2 (1780)    |
-| FireRed-OCR (2.1B) |        —         |    #3 (1551)    |
-| DeepSeek-OCR (4B)  |    #4 (1452)     |    #4 (1437)    |
-| dots.ocr (1.7B)    |    #3 (1453)     |    #5 (945)     |
+Compared to the original OCR-centric flow, this configuration adds:
 
-Rankings can flip completely between collections.
+1. **Task-configured metadata extraction prompt**
+   - Full JSON schema-like instruction with controlled vocabularies for `degree_type` and `discipline`.
+2. **Standard reference-based evaluation**
+   - Field-level scoring against `sudoc_record_templated` with:
+     - exact match for selected fields (`defense_year`, `degree_type`, `language`)
+     - fuzzy matching for text fields
+     - list matching for multi-name fields
+     - `jury_global` consolidation metric
+     - per-field precision / recall / F1 and global mean F1
+3. **Pairwise LLM-as-a-judge ranking**
+   - Existing pairwise comparison + ELO ranking pipeline remains available.
 
-![ELO vs Parameter Count — smaller models can win on the right documents](assets/elo-scatter.png)
-
-**[Try the live viewer](https://huggingface.co/spaces/davanstrien/ocr-bench-britannica-results-qwen35-viewer)** — browse the Britannica 1771 leaderboard, compare OCR outputs side-by-side, and vote on quality yourself.
-
-## Hub-native by design
-
-The entire evaluation loop lives on the Hugging Face Hub:
-
-1. **Your dataset** on the Hub (images + optional ground truth)
-2. **OCR models** run via [HF Jobs](https://huggingface.co/docs/hub/jobs-overview) → outputs written as PRs on a Hub dataset
-3. **VLM judge** via [HF Inference Providers](https://huggingface.co/docs/inference-providers/index) — only needs an HF token
-4. **Results** published to a Hub dataset (leaderboard + pairwise comparisons)
-5. **Viewer** as a [HF Space](https://huggingface.co/spaces) for browsing and human validation
-
-No local GPU required. Everything is shareable via Hub URLs.
-
-## Quickstart
-
-```bash
-uv pip install ocr-bench[viewer]
-
-# 1. Run OCR models on your dataset
-ocr-bench run <input-dataset> <output-repo> --max-samples 50
-
-# 2. Judge outputs pairwise with a VLM
-ocr-bench judge <output-repo>
-
-# 3. Browse results + validate
-ocr-bench view <output-repo>-results
-```
-
-## How it works
-
-**`ocr-bench run`** launches OCR models on your dataset via [HF Jobs](https://huggingface.co/docs/hub/jobs-overview). Each model writes its output as a PR on the same Hub dataset, keeping everything together without merge conflicts.
-
-**`ocr-bench judge`** runs pairwise comparisons using a VLM judge (default: [Qwen3.5-35B-A3B](https://huggingface.co/Qwen/Qwen3.5-35B-A3B) via HF Inference Providers). For each document, the judge sees the original image and two OCR outputs (anonymised as A/B) and picks the better transcription. Results are fit to a [Bradley-Terry model](https://en.wikipedia.org/wiki/Bradley%E2%80%93Terry_model) to produce ELO ratings with bootstrap 95% confidence intervals. Adaptive stopping halts early when rankings are statistically resolved.
-
-**`ocr-bench view`** serves a local web viewer with a leaderboard, comparison browser, and human validation. Vote on comparisons to cross-check the automated judge with human judgement.
-
-## Available models
-
-ocr-bench ships with 5 OCR models ready to run:
-
-| Model           | Size | Best for                   | Notes                        |
-| --------------- | ---- | -------------------------- | ---------------------------- |
-| `glm-ocr`       | 0.9B | Historical printed text    | Top performer on Britannica  |
-| `lighton-ocr-2` | 1B   | Card catalogs, manuscripts | Top performer on BPL         |
-| `firered-ocr`   | 2.1B | Clean printed text         | Mid-pack on degraded docs    |
-| `deepseek-ocr`  | 4B   | Diverse documents          | Most consistent across types |
-| `dots-ocr`      | 1.7B | General                    | Struggles on historical text |
-
-All model scripts are available at [uv-scripts/ocr](https://huggingface.co/datasets/uv-scripts/ocr) on the Hub.
-
-By default all 5 run. To pick specific models:
-
-```bash
-ocr-bench run <dataset> <output> --models glm-ocr lighton-ocr-2
-```
-
-## Example results
-
-![Leaderboard viewer with ELO ratings, confidence intervals, and human validation](assets/leaderboard.png)
-
-Browse these on the Hub:
-
-- [davanstrien/ocr-bench-britannica-results-qwen35](https://huggingface.co/datasets/davanstrien/ocr-bench-britannica-results-qwen35) — Encyclopaedia Britannica 1771, 5 models, 50 samples
-- [davanstrien/bpl-ocr-bench-results](https://huggingface.co/datasets/davanstrien/bpl-ocr-bench-results) — Boston Public Library card catalog, 4 models, 150 samples
-- [Live viewer](https://huggingface.co/spaces/davanstrien/ocr-bench-britannica-results-qwen35-viewer) — Britannica leaderboard with ELO chart and comparison browser
+---
 
 ## Install
 
 ```bash
-uv pip install ocr-bench            # Core (run + judge)
-uv pip install ocr-bench[viewer]    # With web UI
+git clone https://github.com/<your-org>/humatheque-vlm-bench.git
+cd humatheque-vlm-bench
+uv pip install -e .[viewer]
 ```
 
-Or with [uv](https://docs.astral.sh/uv/):
+If `humatheque-vlm-bench` is still "command not found", refresh the editable install:
 
 ```bash
-uv pip install ocr-bench[viewer]
+uv pip install -e .
 ```
 
-Requires Python >= 3.11 and an [HF token](https://huggingface.co/settings/tokens).
+Requires:
 
-## Status
+- Python >= 3.11
+- Hugging Face token (`HF_TOKEN`)
 
-Working proof of concept. The core pipeline (run → judge → view) is functional. Not polished production software — expect rough edges. This is an early-stage project to explore the idea of VLM-judged OCR leaderboards, and gather feedback on the concept and implementation!
+---
+
+## End-to-end workflow
+
+### 1) Run model inference jobs on HF Jobs
+
+```bash
+humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded <your-output-dataset> --max-samples 50
+```
+
+By default, this launches the three configured VLMs.  
+You can list or override models:
+
+```bash
+humatheque-vlm-bench run in out --list-models
+humatheque-vlm-bench run in out --models qwen3-vl-4b-instruct gemma-4-e4b-it
+humatheque-vlm-bench run in out --prompt "Extract thesis metadata as JSON"
+```
+By default, scripts run with their own prompt defaults. Use `--prompt` to force a custom prompt.
+
+### 2) Run evaluation and ranking
+
+```bash
+humatheque-vlm-bench judge <your-output-dataset> --ground-truth-column sudoc_record_templated
+```
+
+`judge` now does **both**:
+
+- **Standard evaluation table** (global F1 + jury global F1 per model)
+- **Pairwise LLM-as-a-judge** comparisons + ELO leaderboard
+
+You can choose a different judge model or jury:
+
+```bash
+humatheque-vlm-bench judge <your-output-dataset> \
+  --model novita:Qwen/Qwen3.5-35B-A3B \
+  --model together:meta-llama/Llama-3.3-70B-Instruct-Turbo
+```
+
+### 3) Browse results locally
+
+```bash
+humatheque-vlm-bench view <your-output-dataset>-results
+```
+
+### 4) (Optional) Publish viewer as a Space
+
+```bash
+humatheque-vlm-bench publish <your-output-dataset>-results
+```
+
+---
+
+## Standard evaluation details
+
+The standard benchmark compares each model output JSON to `sudoc_record_templated`:
+
+- Parses prediction + GT JSON records
+- Computes TP / FP / FN per field
+- Aggregates to precision / recall / F1
+- Reports:
+  - per-field metrics
+  - `jury_global` metrics (combined committee names)
+  - model-level `global_f1` (mean F1 across fields)
+
+This gives a reproducible, reference-based signal that complements LLM-as-a-judge ranking.
+
+---
+
+## Useful commands
+
+```bash
+# Dry run jobs
+humatheque-vlm-bench run Geraldine/humatheque-vlm-sudoc-grounded out --dry-run
+
+# Evaluate only a subset of rows
+humatheque-vlm-bench judge out --max-samples 25
+
+# Disable adaptive pairwise stopping
+humatheque-vlm-bench judge out --no-adaptive
+
+# Re-judge from scratch
+humatheque-vlm-bench judge out --full-rejudge
+```
+
+---
+
+## Notes
+
+- The standard evaluation implementation is intended for this metadata extraction benchmark and can be extended for custom weighting or additional schema rules.
+- For best reproducibility, keep model outputs as valid JSON objects aligned with the configured schema fields.
