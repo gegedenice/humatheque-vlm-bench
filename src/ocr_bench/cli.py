@@ -31,10 +31,11 @@ from ocr_bench.publish import (
     publish_results,
 )
 from ocr_bench.standard_eval import evaluate_against_ground_truth
-from ocr_bench.task_config import DEFAULT_GROUND_TRUTH_COLUMN
+from ocr_bench.task_config import DEFAULT_GROUND_TRUTH_COLUMN, build_default_task_prompt
 
 logger = structlog.get_logger()
 console = Console()
+DEFAULT_TASK_PROMPT = build_default_task_prompt()
 
 
 def build_parser() -> argparse.ArgumentParser:
