@@ -10,10 +10,17 @@ import argparse
 import json
 import logging
 import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 
-from datasets import load_dataset
-from huggingface_hub import InferenceClient
+try:
+    from datasets import load_dataset
+    from huggingface_hub import InferenceClient
+except ModuleNotFoundError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "datasets", "huggingface_hub"])
+    from datasets import load_dataset
+    from huggingface_hub import InferenceClient
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
