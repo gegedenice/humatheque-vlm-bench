@@ -47,7 +47,7 @@ class TestModelRegistry:
 
     def test_all_configs_have_required_fields(self):
         for slug, cfg in MODEL_REGISTRY.items():
-            assert cfg.script.startswith("https://"), f"{slug} script not HTTPS"
+            assert cfg.script.endswith(".py"), f"{slug} script should be a Python script path"
             assert cfg.model_id, f"{slug} missing model_id"
             assert cfg.size, f"{slug} missing size"
             assert cfg.default_flavor, f"{slug} missing default_flavor"
@@ -66,8 +66,10 @@ class TestListModels:
 
 class TestBuildScriptArgs:
     def test_basic_args(self):
-        args = build_script_args("input/ds", "output/repo", "glm-ocr")
+        args = build_script_args("input/ds", "output/repo", "glm-ocr", "org/model")
         assert args[:4] == ["input/ds", "output/repo", "--image-column", "image_uri"]
+        assert "--model-id" in args
+        assert args[args.index("--model-id") + 1] == "org/model"
         assert "--output-column" in args
         assert args[args.index("--output-column") + 1] == "glm-ocr"
         assert "--image-column" in args
@@ -75,32 +77,34 @@ class TestBuildScriptArgs:
         assert "--prompt" not in args
 
     def test_custom_prompt(self):
-        args = build_script_args("in", "out", "x", prompt="extract title")
+        args = build_script_args("in", "out", "x", "org/model", prompt="extract title")
         assert "--prompt" in args
         assert args[args.index("--prompt") + 1] == "extract title"
 
     def test_max_samples(self):
-        args = build_script_args("in", "out", "x", max_samples=50)
+        args = build_script_args("in", "out", "x", "org/model", max_samples=50)
         assert "--max-samples" in args
         idx = args.index("--max-samples")
         assert args[idx + 1] == "50"
 
     def test_shuffle(self):
-        args = build_script_args("in", "out", "x", shuffle=True)
+        args = build_script_args("in", "out", "x", "org/model", shuffle=True)
         assert "--shuffle" in args
 
     def test_non_default_seed(self):
-        args = build_script_args("in", "out", "x", seed=123)
+        args = build_script_args("in", "out", "x", "org/model", seed=123)
         assert "--seed" in args
         idx = args.index("--seed")
         assert args[idx + 1] == "123"
 
     def test_default_seed_omitted(self):
-        args = build_script_args("in", "out", "x", seed=42)
+        args = build_script_args("in", "out", "x", "org/model", seed=42)
         assert "--seed" not in args
 
     def test_extra_args(self):
-        args = build_script_args("in", "out", "x", extra_args=["--prompt-mode", "free"])
+        args = build_script_args(
+            "in", "out", "x", "org/model", extra_args=["--prompt-mode", "free"]
+        )
         assert "--prompt-mode" in args
         assert "free" in args
 

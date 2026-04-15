@@ -66,6 +66,9 @@ By default, scripts run with their own prompt defaults. Use `--prompt` to force 
 
 By default, this launches **3 jobs** (one per default model):  
 `qwen3-vl-4b-instruct`, `nanonets-ocr2-3b`, `gemma-4-e4b-it`.
+Each job runs with its own `model_id` and writes predictions to an output column
+named after the model slug (for example `gemma-4-e4b-it`), so `inference_info`
+reflects the selected model rather than a fallback OCR script identity.
 
 Use `--models` when you want only one model (= one job):
 

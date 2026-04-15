@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import structlog
 from huggingface_hub import HfApi, get_token
@@ -17,6 +18,7 @@ from ocr_bench.task_config import (
 )
 
 logger = structlog.get_logger()
+SCRIPT_PATH = str((Path(__file__).parent / "scripts" / "vlm_metadata_extraction.py").resolve())
 
 
 @dataclass
@@ -32,19 +34,19 @@ class ModelConfig:
 
 MODEL_REGISTRY: dict[str, ModelConfig] = {
     "qwen3-vl-4b-instruct": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/firered-ocr.py",
+        script=SCRIPT_PATH,
         model_id="Qwen/Qwen3-VL-4B-Instruct",
         size="4B",
         default_flavor="l4x1",
     ),
     "nanonets-ocr2-3b": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/nanonets-ocr2.py",
+        script=SCRIPT_PATH,
         model_id="nanonets/Nanonets-OCR2-3B",
         size="3B",
         default_flavor="l4x1",
     ),
     "gemma-4-e4b-it": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/paddleocr-vl.py",
+        script=SCRIPT_PATH,
         model_id="google/gemma-4-E4B-it",
         size="4B",
         default_flavor="l4x1",
@@ -73,8 +75,10 @@ def list_models() -> list[str]:
 def build_script_args(
     input_dataset: str,
     output_repo: str,
-    config_name: str,
+    output_column: str,
+    model_id: str,
     *,
+    split: str = "train",
     max_samples: int | None = None,
     shuffle: bool = False,
     seed: int = 42,
@@ -82,17 +86,18 @@ def build_script_args(
     prompt: str | None = None,
 ) -> list[str]:
     """Build script arguments for uv-scripts/ocr inference jobs.
-
-    These scripts expect positional ``input_dataset output_dataset`` plus flags
-    such as ``--output-column`` (not ``--config`` / ``--create-pr``).
     """
     args = [
         input_dataset,
         output_repo,
+        "--model-id",
+        model_id,
         "--image-column",
         DEFAULT_IMAGE_COLUMN,
         "--output-column",
-        config_name,
+        output_column,
+        "--split",
+        split,
     ]
     if prompt is not None:
         args += ["--prompt", prompt]
@@ -148,6 +153,8 @@ def launch_ocr_jobs(
             input_dataset,
             output_repo,
             slug,
+            config.model_id,
+            split=split,
             max_samples=max_samples,
             shuffle=shuffle,
             seed=seed,
@@ -170,7 +177,11 @@ def launch_ocr_jobs(
 
 
 def _validate_remote_script(script_url: str) -> None:
-    """Validate that a remote HF script URL resolves to a Python file, not an error page."""
+    """Validate remote URL scripts; local scripts are assumed valid if the file exists."""
+    if "://" not in script_url:
+        if not Path(script_url).is_file():
+            raise RuntimeError(f"Local script path not found: {script_url}")
+        return
     try:
         with urllib.request.urlopen(script_url, timeout=15) as response:
             header = response.read(256).decode("utf-8", errors="ignore").strip()
