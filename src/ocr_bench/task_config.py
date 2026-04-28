@@ -17,6 +17,21 @@ THESIS_DEGREE_TYPE_VALUES = [
     "Thèse d'exercice",
 ]
 
+DISSERTATION_DEGREE_TYPE_VALUES = [
+    "Habilitation à diriger des recherches",
+    "Mémoire de DEA",
+    "Mémoire de DES",
+    "Mémoire de DESS",
+    "Mémoire de DU",
+    "Mémoire de DIU",
+    "Mémoire de DUT",
+    "Mémoire de maîtrise",
+    "Mémoire de master professionnel 1re année",
+    "Mémoire de master professionnel 2e année",
+    "Mémoire de master recherche 1re année",
+    "Mémoire de master recherche 2e année",
+]
+
 OAI_DISCIPLINE_VALUES = [
     "Informatique, information, généralités",
     "Informatique",
@@ -119,22 +134,37 @@ OAI_DISCIPLINE_VALUES = [
 ]
 
 
-def build_default_task_prompt() -> str:
-    """Return the default extraction prompt for thesis metadata JSON output."""
-    return f"""Extract the document title from this cover page.
+def build_eval_prompt(doc_type: str) -> str:
+    """Build extraction prompt dynamically from document type."""
+    doc_type_norm = str(doc_type or "").strip().lower()
+    if doc_type_norm == "memoire":
+        degree_type_values = DISSERTATION_DEGREE_TYPE_VALUES
+        document_label = "graduate dissertation"
+    else:
+        degree_type_values = THESIS_DEGREE_TYPE_VALUES
+        document_label = "graduate thesis"
+
+    return f"""Extract the document title from this {document_label} cover page.
 Output ONLY valid JSON:
 {{
-  "title": "Main title of the thesis as it appears on the title page",
+  "title": "Main title as it appears on the title page",
   "subtitle": "Subtitle or remainder of the title, usually following a colon; null if not present",
-  "author": "Full name of the author (student) who wrote the thesis",
-  "degree_type": "Academic degree sought by the author. Possible values are {json.dumps(THESIS_DEGREE_TYPE_VALUES, ensure_ascii=False)}",
-  "discipline": "Academic field or discipline of the thesis.",
-  "granting_institution": "Institution where the thesis was submitted and the degree is granted",
+  "author": "Full name of the author (student) who wrote the {document_label}",
+  "degree_type": "Academic degree sought by the author. Possible values are {json.dumps(degree_type_values, ensure_ascii=False)}",
+  "discipline": "Academic field or discipline of the {document_label}.",
+  "granting_institution": "Institution where the {document_label} was submitted and the degree is granted",
+  "co_tutelle_institutions": "List of institutions involved in a joint supervision or co-tutelle agreement; empty list if none",
   "doctoral_school": "Doctoral school or graduate program, if explicitly mentioned",
-  "defense_year": "Year the thesis was defended. Format yyyy",
-  "thesis_advisor": "Main thesis advisor or supervisor",
-  "jury_president": "President or chair of the thesis examination committee",
-  "reviewers": "Reviewers or rapporteurs of the thesis. Use | as separator",
-  "committee_members": "Other thesis committee or jury members. Use | as separator",
-  "language": "Language in ISO 639-3 codes. Example: fre, eng, ita..."
+  "defense_year": "Year the {document_label} was defended. Format yyyy",
+  "advisor": "Main {document_label} advisor(s) or supervisor(s). Use | as separator.",
+  "jury_president": "President/chair of the jury or examination committee. Do not include this person in committee_members.",
+  "reviewers": "Official reviewers/rapporteurs. Use | as separator. Do not include these people in committee_members.",
+  "committee_members": "All jury/examination committee members except president/chair and reviewers/rapporteurs. This field MUST include advisor(s)/supervisor(s), duplicating them from advisor when present. Use | as separator.",
+  "language": "Language in ISO 639-3 codes. Example: fre, eng, ita...",
+  "confidence": "Confidence score between 0.0 and 1.0 indicating reliability of the extracted metadata"
 }}"""
+
+
+def build_default_task_prompt() -> str:
+    """Default prompt for runs when doc_type is unknown."""
+    return build_eval_prompt("these")

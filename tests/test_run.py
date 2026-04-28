@@ -127,8 +127,8 @@ class TestLaunchOcrJobs:
             assert job.status == "running"
 
     def test_prompt_contains_degree_and_discipline_constraints(self):
-        assert '"degree_type": "Academic degree sought by the author."' in DEFAULT_TASK_PROMPT
-        assert '"discipline": "Academic field or discipline of the thesis."' in DEFAULT_TASK_PROMPT
+        assert '"degree_type": "Academic degree sought by the author. Possible values are [' in DEFAULT_TASK_PROMPT
+        assert '"discipline": "Academic field or discipline of the graduate thesis."' in DEFAULT_TASK_PROMPT
 
     @patch("ocr_bench.run.get_token", return_value="fake-token")
     def test_launches_subset(self, mock_token):

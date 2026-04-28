@@ -23,6 +23,8 @@ except ModuleNotFoundError:
     from datasets import load_dataset
     from huggingface_hub import InferenceClient
 
+from ocr_bench.task_config import build_eval_prompt
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -42,25 +44,6 @@ def load_env_file(path: str = ".env") -> None:
             os.environ[key] = value
 
 
-DEFAULT_PROMPT = """Extract the document title from this cover page.
-Output ONLY valid JSON:
-{
-  "title": "Main title of the thesis as it appears on the title page",
-  "subtitle": "Subtitle or remainder of the title, usually following a colon; null if not present",
-  "author": "Full name of the author (student) who wrote the thesis",
-  "degree_type": "Academic degree sought by the author.",
-  "discipline": "Academic field or discipline of the thesis.",
-  "granting_institution": "Institution where the thesis was submitted and the degree is granted",
-  "doctoral_school": "Doctoral school or graduate program, if explicitly mentioned",
-  "defense_year": "Year the thesis was defended. Format yyyy",
-  "thesis_advisor": "Main thesis advisor or supervisor",
-  "jury_president": "President or chair of the thesis examination committee",
-  "reviewers": "Reviewers or rapporteurs of the thesis. Use | as separator",
-  "committee_members": "Other thesis committee or jury members. Use | as separator",
-  "language": "Language in ISO 639-3 codes. Example: fre, eng, ita..."
-}"""
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run VLM metadata extraction on a Hub dataset.")
     parser.add_argument("input_dataset")
@@ -68,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-id", required=True)
     parser.add_argument("--image-column", default="image_uri")
     parser.add_argument("--output-column", default="prediction")
-    parser.add_argument("--prompt", default=DEFAULT_PROMPT)
+    parser.add_argument("--prompt", default=None)
     parser.add_argument("--split", default="train")
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--shuffle", action="store_true")
@@ -120,11 +103,12 @@ def main() -> None:
             predictions.append("{}")
             continue
         try:
+            prompt = args.prompt or build_eval_prompt(row.get("doc_type", ""))
             pred = _extract_one(
                 client,
                 args.model_id,
                 image_url,
-                args.prompt,
+                prompt,
                 args.max_tokens,
                 args.temperature,
             )
