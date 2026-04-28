@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from ocr_bench.run import (
+    DEFAULT_TASK_PROMPT,
     DEFAULT_MODELS,
     MODEL_REGISTRY,
     JobRun,
@@ -38,7 +39,7 @@ class TestModelConfig:
 
 class TestModelRegistry:
     def test_has_core_models(self):
-        assert len(MODEL_REGISTRY) == 7
+        assert len(MODEL_REGISTRY) == 3
 
     def test_default_models_exist_in_registry(self):
         for slug in DEFAULT_MODELS:
@@ -46,15 +47,14 @@ class TestModelRegistry:
 
     def test_all_configs_have_required_fields(self):
         for slug, cfg in MODEL_REGISTRY.items():
-            assert cfg.script.startswith("https://"), f"{slug} script not HTTPS"
+            assert cfg.script.endswith(".py"), f"{slug} script should be a Python script path"
             assert cfg.model_id, f"{slug} missing model_id"
             assert cfg.size, f"{slug} missing size"
             assert cfg.default_flavor, f"{slug} missing default_flavor"
 
-    def test_deepseek_has_prompt_mode_free(self):
-        cfg = MODEL_REGISTRY["deepseek-ocr"]
-        assert "--prompt-mode" in cfg.default_args
-        assert "free" in cfg.default_args
+    def test_qwen_model_exists(self):
+        cfg = MODEL_REGISTRY["qwen3-vl-4b-instruct"]
+        assert cfg.model_id == "Qwen/Qwen3-VL-4B-Instruct"
 
 
 class TestListModels:
@@ -66,31 +66,45 @@ class TestListModels:
 
 class TestBuildScriptArgs:
     def test_basic_args(self):
-        args = build_script_args("input/ds", "output/repo", "glm-ocr")
-        assert args == ["input/ds", "output/repo", "--config", "glm-ocr", "--create-pr"]
+        args = build_script_args("input/ds", "output/repo", "glm-ocr", "org/model")
+        assert args[:4] == ["input/ds", "output/repo", "--image-column", "image_uri"]
+        assert "--model-id" in args
+        assert args[args.index("--model-id") + 1] == "org/model"
+        assert "--output-column" in args
+        assert args[args.index("--output-column") + 1] == "glm-ocr"
+        assert "--image-column" in args
+        assert "image_uri" in args
+        assert "--prompt" not in args
+
+    def test_custom_prompt(self):
+        args = build_script_args("in", "out", "x", "org/model", prompt="extract title")
+        assert "--prompt" in args
+        assert args[args.index("--prompt") + 1] == "extract title"
 
     def test_max_samples(self):
-        args = build_script_args("in", "out", "x", max_samples=50)
+        args = build_script_args("in", "out", "x", "org/model", max_samples=50)
         assert "--max-samples" in args
         idx = args.index("--max-samples")
         assert args[idx + 1] == "50"
 
     def test_shuffle(self):
-        args = build_script_args("in", "out", "x", shuffle=True)
+        args = build_script_args("in", "out", "x", "org/model", shuffle=True)
         assert "--shuffle" in args
 
     def test_non_default_seed(self):
-        args = build_script_args("in", "out", "x", seed=123)
+        args = build_script_args("in", "out", "x", "org/model", seed=123)
         assert "--seed" in args
         idx = args.index("--seed")
         assert args[idx + 1] == "123"
 
     def test_default_seed_omitted(self):
-        args = build_script_args("in", "out", "x", seed=42)
+        args = build_script_args("in", "out", "x", "org/model", seed=42)
         assert "--seed" not in args
 
     def test_extra_args(self):
-        args = build_script_args("in", "out", "x", extra_args=["--prompt-mode", "free"])
+        args = build_script_args(
+            "in", "out", "x", "org/model", extra_args=["--prompt-mode", "free"]
+        )
         assert "--prompt-mode" in args
         assert "free" in args
 
@@ -106,11 +120,15 @@ class TestLaunchOcrJobs:
 
         jobs = launch_ocr_jobs("input/ds", "output/repo", api=mock_api)
 
-        assert len(jobs) == 5
-        assert mock_api.run_uv_job.call_count == 5
+        assert len(jobs) == 3
+        assert mock_api.run_uv_job.call_count == 3
         for job in jobs:
             assert isinstance(job, JobRun)
             assert job.status == "running"
+
+    def test_prompt_contains_degree_and_discipline_constraints(self):
+        assert '"degree_type": "Academic degree sought by the author. Possible values are [' in DEFAULT_TASK_PROMPT
+        assert '"discipline": "Academic field or discipline of the graduate thesis."' in DEFAULT_TASK_PROMPT
 
     @patch("ocr_bench.run.get_token", return_value="fake-token")
     def test_launches_subset(self, mock_token):
@@ -121,12 +139,15 @@ class TestLaunchOcrJobs:
         mock_api.run_uv_job.return_value = mock_job
 
         jobs = launch_ocr_jobs(
-            "input/ds", "output/repo", models=["glm-ocr", "dots-ocr"], api=mock_api
+            "input/ds",
+            "output/repo",
+            models=["qwen3-vl-4b-instruct", "nanonets-ocr2-3b"],
+            api=mock_api,
         )
 
         assert len(jobs) == 2
-        assert jobs[0].model_slug == "glm-ocr"
-        assert jobs[1].model_slug == "dots-ocr"
+        assert jobs[0].model_slug == "qwen3-vl-4b-instruct"
+        assert jobs[1].model_slug == "nanonets-ocr2-3b"
 
     @patch("ocr_bench.run.get_token", return_value="fake-token")
     def test_unknown_model_raises(self, mock_token):
@@ -154,7 +175,13 @@ class TestLaunchOcrJobs:
         mock_job.url = "https://example.com"
         mock_api.run_uv_job.return_value = mock_job
 
-        launch_ocr_jobs("in", "out", models=["glm-ocr"], flavor_override="a100-large", api=mock_api)
+        launch_ocr_jobs(
+            "in",
+            "out",
+            models=["qwen3-vl-4b-instruct"],
+            flavor_override="a100-large",
+            api=mock_api,
+        )
 
         call_kwargs = mock_api.run_uv_job.call_args
         assert call_kwargs.kwargs["flavor"] == "a100-large"
@@ -169,8 +196,8 @@ class TestPollJobs:
         mock_api.inspect_job.return_value = mock_info
 
         jobs = [
-            JobRun(model_slug="glm-ocr", job_id="j1", job_url="url1"),
-            JobRun(model_slug="dots-ocr", job_id="j2", job_url="url2"),
+            JobRun(model_slug="qwen3-vl-4b-instruct", job_id="j1", job_url="url1"),
+            JobRun(model_slug="nanonets-ocr2-3b", job_id="j2", job_url="url2"),
         ]
 
         result = poll_jobs(jobs, interval=1, api=mock_api)
@@ -183,7 +210,7 @@ class TestPollJobs:
         mock_info.status.stage = "ERROR"
         mock_api.inspect_job.return_value = mock_info
 
-        jobs = [JobRun(model_slug="glm-ocr", job_id="j1", job_url="url1")]
+        jobs = [JobRun(model_slug="qwen3-vl-4b-instruct", job_id="j1", job_url="url1")]
         result = poll_jobs(jobs, interval=1, api=mock_api)
         assert result[0].status == "error"
 
@@ -199,7 +226,7 @@ class TestPollJobs:
         # First call returns running, second returns completed
         mock_api.inspect_job.side_effect = [running, done]
 
-        jobs = [JobRun(model_slug="glm-ocr", job_id="j1", job_url="url1")]
+        jobs = [JobRun(model_slug="qwen3-vl-4b-instruct", job_id="j1", job_url="url1")]
         result = poll_jobs(jobs, interval=1, api=mock_api)
         assert result[0].status == "completed"
         assert mock_sleep.call_count == 2
@@ -215,6 +242,14 @@ class TestCLIParser:
         assert args.input_dataset == "input/ds"
         assert args.output_repo == "output/repo"
         assert args.max_samples == 50
+        assert args.prompt is None
+
+    def test_run_prompt_flag(self):
+        from ocr_bench.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["run", "in", "out", "--prompt", "extract title"])
+        assert args.prompt == "extract title"
 
     def test_run_list_models(self):
         from ocr_bench.cli import build_parser
@@ -234,6 +269,7 @@ class TestCLIParser:
         from ocr_bench.cli import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(["run", "in", "out", "--models", "glm-ocr", "dots-ocr"])
-        assert args.models == ["glm-ocr", "dots-ocr"]
-
+        args = parser.parse_args(
+            ["run", "in", "out", "--models", "qwen3-vl-4b-instruct", "gemma-4-e4b-it"]
+        )
+        assert args.models == ["qwen3-vl-4b-instruct", "gemma-4-e4b-it"]

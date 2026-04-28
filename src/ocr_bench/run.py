@@ -1,14 +1,24 @@
-"""OCR model orchestration — launch HF Jobs for multiple OCR models."""
+"""VLM model orchestration — launch HF Jobs for metadata extraction models."""
 
 from __future__ import annotations
 
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import structlog
 from huggingface_hub import HfApi, get_token
 
+from ocr_bench.task_config import (
+    DEFAULT_IMAGE_COLUMN,
+    DEFAULT_SOURCE_DATASET,
+    build_default_task_prompt,
+)
+
 logger = structlog.get_logger()
+SCRIPT_PATH = str((Path(__file__).parent / "scripts" / "vlm_metadata_extraction.py").resolve())
 
 
 @dataclass
@@ -23,52 +33,28 @@ class ModelConfig:
 
 
 MODEL_REGISTRY: dict[str, ModelConfig] = {
-    "glm-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/glm-ocr.py",
-        model_id="zai-org/GLM-OCR",
-        size="0.9B",
-        default_flavor="l4x1",
-    ),
-    "deepseek-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/deepseek-ocr-vllm.py",
-        model_id="deepseek-ai/DeepSeek-OCR",
+    "qwen3-vl-4b-instruct": ModelConfig(
+        script=SCRIPT_PATH,
+        model_id="Qwen/Qwen3-VL-4B-Instruct",
         size="4B",
         default_flavor="l4x1",
-        default_args=["--prompt-mode", "free"],
     ),
-    "lighton-ocr-2": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/lighton-ocr2.py",
-        model_id="lightonai/LightOnOCR-2-1B",
-        size="1B",
-        default_flavor="a100-large",
-    ),
-    "dots-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/dots-ocr.py",
-        model_id="rednote-hilab/dots.ocr",
-        size="1.7B",
-        default_flavor="l4x1",
-    ),
-    "firered-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/firered-ocr.py",
-        model_id="FireRedTeam/FireRed-OCR",
-        size="2.1B",
-        default_flavor="l4x1",
-    ),
-    "qianfan-ocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/qianfan-ocr.py",
-        model_id="baidu/Qianfan-OCR",
-        size="4.7B",
-        default_flavor="l4x1",
-    ),
-    "dots-mocr": ModelConfig(
-        script="https://huggingface.co/datasets/uv-scripts/ocr/raw/main/dots-mocr.py",
-        model_id="rednote-hilab/dots.mocr",
+    "nanonets-ocr2-3b": ModelConfig(
+        script=SCRIPT_PATH,
+        model_id="nanonets/Nanonets-OCR2-3B",
         size="3B",
+        default_flavor="l4x1",
+    ),
+    "gemma-4-e4b-it": ModelConfig(
+        script=SCRIPT_PATH,
+        model_id="google/gemma-4-E4B-it",
+        size="4B",
         default_flavor="l4x1",
     ),
 }
 
-DEFAULT_MODELS = ["glm-ocr", "deepseek-ocr", "lighton-ocr-2", "dots-ocr", "firered-ocr"]
+DEFAULT_MODELS = ["qwen3-vl-4b-instruct", "nanonets-ocr2-3b", "gemma-4-e4b-it"]
+DEFAULT_TASK_PROMPT = build_default_task_prompt()
 
 
 @dataclass
@@ -89,21 +75,32 @@ def list_models() -> list[str]:
 def build_script_args(
     input_dataset: str,
     output_repo: str,
-    config_name: str,
+    output_column: str,
+    model_id: str,
     *,
+    split: str = "train",
     max_samples: int | None = None,
     shuffle: bool = False,
     seed: int = 42,
     extra_args: list[str] | None = None,
+    prompt: str | None = None,
 ) -> list[str]:
-    """Build the script_args list for run_uv_job."""
+    """Build script arguments for uv-scripts/ocr inference jobs.
+    """
     args = [
         input_dataset,
         output_repo,
-        "--config",
-        config_name,
-        "--create-pr",
+        "--model-id",
+        model_id,
+        "--image-column",
+        DEFAULT_IMAGE_COLUMN,
+        "--output-column",
+        output_column,
+        "--split",
+        split,
     ]
+    if prompt is not None:
+        args += ["--prompt", prompt]
     if max_samples is not None:
         args += ["--max-samples", str(max_samples)]
     if shuffle:
@@ -124,6 +121,7 @@ def launch_ocr_jobs(
     split: str = "train",
     shuffle: bool = False,
     seed: int = 42,
+    prompt: str | None = None,
     flavor_override: str | None = None,
     timeout: str = "4h",
     api: HfApi | None = None,
@@ -144,17 +142,24 @@ def launch_ocr_jobs(
             )
 
     jobs: list[JobRun] = []
+    validated_scripts: set[str] = set()
     for slug in selected:
         config = MODEL_REGISTRY[slug]
+        if config.script not in validated_scripts:
+            _validate_remote_script(config.script)
+            validated_scripts.add(config.script)
         flavor = flavor_override or config.default_flavor
         script_args = build_script_args(
             input_dataset,
             output_repo,
             slug,
+            config.model_id,
+            split=split,
             max_samples=max_samples,
             shuffle=shuffle,
             seed=seed,
             extra_args=config.default_args or None,
+            prompt=prompt,
         )
 
         logger.info("launching_job", model=slug, flavor=flavor, script=config.script)
@@ -169,6 +174,25 @@ def launch_ocr_jobs(
         logger.info("job_launched", model=slug, job_id=job.id, url=job.url)
 
     return jobs
+
+
+def _validate_remote_script(script_url: str) -> None:
+    """Validate remote URL scripts; local scripts are assumed valid if the file exists."""
+    if "://" not in script_url:
+        if not Path(script_url).is_file():
+            raise RuntimeError(f"Local script path not found: {script_url}")
+        return
+    try:
+        with urllib.request.urlopen(script_url, timeout=15) as response:
+            header = response.read(256).decode("utf-8", errors="ignore").strip()
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not access script URL: {script_url}") from exc
+
+    if "Entry not found" in header:
+        raise RuntimeError(
+            f"Script URL points to a missing file: {script_url}. "
+            "Please update MODEL_REGISTRY to a valid uv-scripts/ocr raw path."
+        )
 
 
 _TERMINAL_STAGES = frozenset({"COMPLETED", "ERROR", "CANCELED", "DELETED"})
