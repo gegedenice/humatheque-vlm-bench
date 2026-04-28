@@ -4,10 +4,12 @@ import os
 
 import uvicorn
 
+from ocr_bench.env import load_env_file
 from ocr_bench.web import create_app
 
 
 def main():
+    load_env_file()
     repos = os.environ.get("REPOS", "davanstrien/bpl-ocr-bench-results")
     repo_id = repos.split(",")[0].strip()
     app = create_app(repo_id, output_path="/tmp/annotations.json")
