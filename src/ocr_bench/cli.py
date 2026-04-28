@@ -513,6 +513,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     """Launch OCR models on a dataset via HF Jobs."""
     from ocr_bench.run import (
         DEFAULT_MODELS,
+        DEFAULT_TASK_PROMPT,
         MODEL_REGISTRY,
         build_script_args,
         launch_ocr_jobs,
@@ -691,3 +692,4 @@ def main() -> None:
     except DatasetError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
+    selected_prompt = args.prompt if args.prompt is not None else DEFAULT_TASK_PROMPT
