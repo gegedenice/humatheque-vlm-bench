@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     from datasets import load_dataset
@@ -24,6 +25,21 @@ except ModuleNotFoundError:
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def load_env_file(path: str = ".env") -> None:
+    env_path = Path(path)
+    if not env_path.is_file():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 DEFAULT_PROMPT = """Extract the document title from this cover page.
@@ -83,6 +99,7 @@ def _extract_one(client: InferenceClient, model_id: str, image_url: str, prompt:
 
 
 def main() -> None:
+    load_env_file()
     args = parse_args()
     token = args.hf_token or os.getenv("HF_TOKEN")
     client = InferenceClient(token=token)

@@ -42,6 +42,12 @@ cd humatheque-vlm-bench
 uv pip install -e .[viewer]
 ```
 
+Copy env template and edit values:
+
+```bash
+cp .env.example .env
+```
+
 If `humatheque-vlm-bench` is still "command not found", refresh the editable install:
 
 ```bash
@@ -51,7 +57,7 @@ uv pip install -e .
 Requires:
 
 - Python >= 3.11
-- Hugging Face token (`HF_TOKEN`)
+- Hugging Face token (`HF_TOKEN`) in `.env` or shell environment
 
 ---
 

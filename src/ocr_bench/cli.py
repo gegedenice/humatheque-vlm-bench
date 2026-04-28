@@ -22,6 +22,7 @@ from ocr_bench.dataset import (
     load_config_dataset,
     load_flat_dataset,
 )
+from ocr_bench.env import load_env_file
 from ocr_bench.elo import ComparisonResult, Leaderboard, compute_elo, rankings_resolved
 from ocr_bench.judge import Comparison, _normalize_pair, build_comparisons, sample_indices
 from ocr_bench.publish import (
@@ -36,6 +37,7 @@ from ocr_bench.task_config import DEFAULT_GROUND_TRUTH_COLUMN, build_default_tas
 logger = structlog.get_logger()
 console = Console()
 DEFAULT_TASK_PROMPT = build_default_task_prompt()
+load_env_file()
 
 
 def build_parser() -> argparse.ArgumentParser:
