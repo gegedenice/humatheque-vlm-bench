@@ -50,7 +50,8 @@ def test_evaluate_against_ground_truth_single_row_perfect_match():
     results = evaluate_against_ground_truth(ds, {"model_output": "ModelA"})
     assert len(results) == 1
     assert results[0].samples == 1
-    assert 0.0 < results[0].global_f1 < 1.0
+    assert 0.0 < results[0].role_specific_f1 < 1.0
+    assert 0.0 < results[0].jury_pooled_f1 < 1.0
     assert results[0].jury_global_f1 == 1.0
 
 

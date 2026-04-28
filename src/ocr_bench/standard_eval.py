@@ -20,15 +20,16 @@ LIST_FIELDS = {
     "title",
     "subtitle",
     "author",
-    "degree_type",
     "discipline",
     "granting_institution",
     "doctoral_school",
+    "advisor",
     "thesis_advisor",
     "jury_president",
     "reviewers",
     "committee_members",
 }
+JURY_FIELDS = {"advisor", "jury_president", "reviewers", "committee_members"}
 
 FUZZY_THRESHOLD = 90
 _JURY_FIELDS = ("jury_president", "reviewers", "committee_members")
@@ -40,7 +41,8 @@ class StandardEvalResult:
 
     model: str
     samples: int
-    global_f1: float
+    role_specific_f1: float
+    jury_pooled_f1: float
     jury_global_f1: float
     metrics: dict[str, dict[str, float]]
 
@@ -193,12 +195,27 @@ def aggregate_metrics(all_results: list[dict[str, dict[str, int]]]) -> dict[str,
     }
 
 
-def compute_global_score(metrics: dict[str, dict[str, float]]) -> float:
-    """Mean F1 across fields (including jury_global when present)."""
-    if not metrics:
+def compute_average_f1(
+    metrics: dict[str, dict[str, float]], fields: set[str] | None = None
+) -> float:
+    """Macro-average F1 over selected fields."""
+    selected = [
+        item["f1"] for field, item in metrics.items() if fields is None or field in fields
+    ]
+    if not selected:
         return 0.0
-    f1s = [entry["f1"] for entry in metrics.values()]
-    return sum(f1s) / len(f1s) if f1s else 0.0
+    return sum(selected) / len(selected)
+
+
+def compute_global_scores(metrics: dict[str, dict[str, float]]) -> dict[str, float]:
+    """Compute the 3 headline scores from aggregated field metrics."""
+    real_fields = set(metrics) - {"jury_global"}
+    pooled_fields = (real_fields - JURY_FIELDS) | {"jury_global"}
+    return {
+        "role_specific": compute_average_f1(metrics, real_fields),
+        "jury_pooled": compute_average_f1(metrics, pooled_fields),
+        "jury_global": metrics.get("jury_global", {}).get("f1", 0.0),
+    }
 
 
 def _parse_observable_fields(raw: Any) -> set[str] | None:
@@ -271,13 +288,14 @@ def evaluate_against_ground_truth(
             all_results.append(evaluate_record(pred, gt, observable_fields))
 
         metrics = aggregate_metrics(all_results)
-        jury_f1 = metrics.get("jury_global", {}).get("f1", 0.0)
+        scores = compute_global_scores(metrics)
         outputs.append(
             StandardEvalResult(
                 model=model_name,
                 samples=compared,
-                global_f1=compute_global_score(metrics),
-                jury_global_f1=jury_f1,
+                role_specific_f1=scores["role_specific"],
+                jury_pooled_f1=scores["jury_pooled"],
+                jury_global_f1=scores["jury_global"],
                 metrics=metrics,
             )
         )

@@ -308,13 +308,15 @@ def cmd_judge(args: argparse.Namespace) -> None:
         metrics_table = Table(title="Standard Evaluation (Dummy Scaffold)")
         metrics_table.add_column("Model")
         metrics_table.add_column("Samples", justify="right")
-        metrics_table.add_column("Global F1", justify="right")
+        metrics_table.add_column("Role-specific F1", justify="right")
+        metrics_table.add_column("Jury-pooled F1", justify="right")
         metrics_table.add_column("Jury global F1", justify="right")
         for metric in standard_metrics:
             metrics_table.add_row(
                 metric.model,
                 str(metric.samples),
-                f"{metric.global_f1:.3f}",
+                f"{metric.role_specific_f1:.3f}",
+                f"{metric.jury_pooled_f1:.3f}",
                 f"{metric.jury_global_f1:.3f}",
             )
         console.print()
